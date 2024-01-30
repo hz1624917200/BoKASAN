@@ -3,6 +3,7 @@
 
 #include <linux/kobject.h>
 #include <linux/mm.h>
+#include <linux/slab.h>
 #include <linux/slub_def.h>
 
 inline void *kasan_mem_to_shadow(const void *addr);

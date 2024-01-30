@@ -1,0 +1,19 @@
+{
+	"files.associations": {
+		"*.toml": "toml",
+		"kernel.h": "c",
+		"kasan.h": "c",
+		"hook.h": "c",
+		"slab.h": "c",
+		"cdev.h": "c",
+		"kobject.h": "c",
+		"sysfs.h": "c",
+		"kernfs.h": "c",
+		"mutex.h": "c",
+		"traps.h": "c",
+		"module.h": "c",
+		"ftrace.h": "c",
+		"page.h": "c",
+		"stacktrace.h": "c"
+	}
+}

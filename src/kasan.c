@@ -7,6 +7,7 @@
 #include <linux/cdev.h>
 #include <linux/slab.h>
 #include <linux/mempool.h>
+#include <linux/types.h>
 
 #include <asm/traps.h>
 #include <asm/tlbflush.h>
@@ -25,7 +26,7 @@
 
 MODULE_DESCRIPTION("BoKASAN");
 MODULE_AUTHOR("Mingi Cho");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL2");
 
 unsigned long g_vaddr;
 int major;
@@ -97,7 +98,7 @@ static asmlinkage void* fh_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t fla
 	size_t size = 0;
 
 	// Selective sanitization
-	if(!is_current_pid_present() || irq_count()){
+	if(!is_current_pid_present() || irq_count()){		// Is not registered to BoKASAN
 		for(i = 0; i <= MAX_ALLOC_TRIAL; i++){
 			object = real_kmem_cache_alloc(cachep, flags);
 
@@ -105,7 +106,7 @@ static asmlinkage void* fh_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t fla
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_protnone((unsigned long)object)){
+			if(is_page_special((unsigned long)object)){		// Design: cannot reuse previous page?
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -169,7 +170,7 @@ static asmlinkage void* fh_kmem_cache_alloc_trace(struct kmem_cache *cachep, gfp
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_protnone((unsigned long)object)){
+			if(is_page_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -194,7 +195,7 @@ static asmlinkage void* fh_kmem_cache_alloc_trace(struct kmem_cache *cachep, gfp
 		if(index >= 14)
 			object = real_kmem_cache_alloc_trace(cachep, flags, size);
 		else
-			object = real_kmem_cache_alloc_trace(kmalloc_caches[index], flags, kasan_size);
+			object = real_kmem_cache_alloc_trace(kmalloc_caches[kmalloc_type(flags)][index], flags, kasan_size);
 
 		if(ZERO_OR_NULL_PTR(object)) return object;
 
@@ -218,7 +219,7 @@ static asmlinkage void* fh__kmalloc(size_t size, gfp_t flags){
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_protnone((unsigned long)object)){
+			if(is_page_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -260,7 +261,7 @@ static asmlinkage void* fh_kmem_cache_alloc_node(struct kmem_cache *cachep, gfp_
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_protnone((unsigned long)object)){
+			if(is_page_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -316,7 +317,7 @@ static asmlinkage void* fh_kmem_cache_alloc_node_trace(struct kmem_cache *cachep
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_protnone((unsigned long)object)){
+			if(is_page_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -341,7 +342,7 @@ static asmlinkage void* fh_kmem_cache_alloc_node_trace(struct kmem_cache *cachep
 		if(index >= 14)
 			object = real_kmem_cache_alloc_node_trace(cachep, flags, nodeid, size);
 		else
-			object = real_kmem_cache_alloc_node_trace(kmalloc_caches[index], flags, nodeid, size);
+			object = real_kmem_cache_alloc_node_trace(kmalloc_caches[kmalloc_type(flags)][index], flags, nodeid, size);
 
 		if(ZERO_OR_NULL_PTR(object)) return object;
 
@@ -365,7 +366,7 @@ static asmlinkage void* fh__kmalloc_node(size_t size, gfp_t flags, int nodeid){
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_protnone((unsigned long)object)){
+			if(is_page_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -401,7 +402,7 @@ static asmlinkage void* fh_kmalloc_order(size_t size, gfp_t flags, unsigned int 
 
 		if(ZERO_OR_NULL_PTR(object)) return object;
 
-		if(is_page_protnone((unsigned long)object)){
+		if(is_page_special((unsigned long)object)){
 			clear_kasan_alloc_shadow((unsigned long)object);
 		}
 
@@ -433,7 +434,7 @@ static asmlinkage void* fh_kmalloc_large_node(size_t size, gfp_t flags, int node
 
 		if(ZERO_OR_NULL_PTR(object)) return object;
 
-		if(is_page_protnone((unsigned long)object)){
+		if(is_page_special((unsigned long)object)){
 			clear_kasan_alloc_shadow((unsigned long)object);
 		}
 
@@ -605,7 +606,7 @@ static asmlinkage long fh_do_page_fault(struct pt_regs *regs,
 	unsigned long vaddr = address;
 
 	// Filter out irrelevant memory access
-	if(is_page_protnone(vaddr)){
+	if(is_page_special(vaddr)){
 		// Mark page present
 		set_present_bit(vaddr);
 

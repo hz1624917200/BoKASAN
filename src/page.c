@@ -3,11 +3,12 @@
 
 #include <asm/tlbflush.h>
 #include <asm/pgtable_types.h>
+#include <stdbool.h>
 
 #include "page.h"
 #include "alloc.h"
 
-bool is_page_protnone(unsigned long vaddr){
+bool is_page_special(unsigned long vaddr){
 	unsigned int l;
 	pte_t* pte;
 	pteval_t val;
@@ -18,7 +19,6 @@ bool is_page_protnone(unsigned long vaddr){
 		val = native_pte_val(*pte);
 
 		if((val & _PAGE_PRESENT) != _PAGE_PRESENT){
-			// if((val & _PAGE_PROTNONE) == _PAGE_PROTNONE){
 			if((val & _PAGE_SPECIAL) == _PAGE_SPECIAL){
 				return true;
 			}

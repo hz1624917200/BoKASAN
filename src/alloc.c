@@ -4,14 +4,17 @@
 #include <linux/module.h>
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
+#include <linux/mm.h>
 
 #include <asm/pgtable_types.h>
+#include <asm/pgtable.h>
 #include <asm/tlbflush.h>
 
 #include "alloc.h"
 #include "page.h"
 #include "report.h"
 #include "process_handle.h"
+#include <stdbool.h>
 
 void* g_shadow_memory;
 
@@ -161,7 +164,7 @@ void make_4k_page(void* object){
 
 		if(is_current_pid_present()){
 			remove_pid(pid);
-			change_page_attr_set_clr_(&addr, 1, __pgprot(0), __pgprot(0), 1, 0, NULL);
+			change_page_attr_set_clr_(&addr, 1, __pgprot(0), __pgprot(0), 1, 0, NULL);		// Split the pages to 4K size
 			add_pid(pid);
 		} else{
 			change_page_attr_set_clr_(&addr, 1, __pgprot(0), __pgprot(0), 1, 0, NULL);
@@ -471,6 +474,7 @@ bool alloc_shadow(size_t size, unsigned long addr){
 	return true;
 }
 
+// Use after malloc functions, alloc shadow memory for sanitized region
 bool bokasan_kmalloc(const void *object, size_t size){
 	unsigned long redzone_start;
 	unsigned long redzone_end;
