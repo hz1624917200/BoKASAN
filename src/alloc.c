@@ -33,23 +33,37 @@ inline void *kasan_mem_to_shadow(const void *addr){
 void init_kasan(void){
 	unsigned long vaddr = 0xffff880000100000;
 	unsigned long shadow_start, shadow_end;
-	size_t size = PAGE_SIZE * 0x100;
+	size_t size = 0x2000;
 
 	__vmalloc_node_range_ = (void *)kallsyms_lookup_name("__vmalloc_node_range");
 	change_page_attr_set_clr_ = (void*) kallsyms_lookup_name("change_page_attr_set_clr");
 
-	shadow_start = (unsigned long)kasan_mem_to_shadow((void*)vaddr);
-	shadow_end = (unsigned long)kasan_mem_to_shadow((void*)vaddr + size);
-
+	// TODO: test alloc
+	void* test_kobj;
+	test_kobj = kmalloc(size, GFP_KERNEL);
+	printk("test_kobj %px\n", test_kobj);
+	shadow_start = (unsigned long)kasan_mem_to_shadow((void*)test_kobj);
+	shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
 	g_shadow_memory = __vmalloc_node_range_(size >> KASAN_SHADOW_SCALE_SHIFT, 1,
 			shadow_start, shadow_end,
 			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL,
 			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
 			__builtin_return_address(0));
+	bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
+	pages_clear_present_bit((unsigned long)test_kobj, size);
 
-	bokasan_poison_shadow((void*)vaddr, size, BOKASAN_FREE_PAGE);
+	// shadow_start = (unsigned long)kasan_mem_to_shadow((void*)vaddr);
+	// shadow_end = (unsigned long)kasan_mem_to_shadow((void*)vaddr + size);
 
-	pages_clear_present_bit(vaddr, size);
+	// g_shadow_memory = __vmalloc_node_range_(size >> KASAN_SHADOW_SCALE_SHIFT, 1,
+	// 		shadow_start, shadow_end,
+	// 		GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL,
+	// 		PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
+	// 		__builtin_return_address(0));
+
+	// bokasan_poison_shadow((void*)vaddr, size, BOKASAN_FREE_PAGE);
+
+	// pages_clear_present_bit(vaddr, size);
 }
 
 static inline size_t slab_ksize(const struct kmem_cache *s)

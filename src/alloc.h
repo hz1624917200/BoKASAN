@@ -46,7 +46,9 @@ void bokasan_kfree_poison(struct kmem_cache *cache, const void* addr, size_t siz
 #define KASAN_MAX_OBJECT_SIZE 0x2000
 
 // #define CONFIG_KASAN_SHADOW_OFFSET	0xdffffc0000000000
-#define CONFIG_KASAN_SHADOW_OFFSET	0xDFFFEFF000000000 //0xdfffebe000000000
+// #define CONFIG_KASAN_SHADOW_OFFSET	0xDFFFEFF000000000 //0xdfffebe000000000
+// for 5-level paging, mapping memory to 0xfffffe1000000000
+#define CONFIG_KASAN_SHADOW_OFFSET	0xe01dfe1000000000
 #define KASAN_SHADOW_SCALE_SHIFT	3
 #define KASAN_SHADOW_OFFSET 		_AC(CONFIG_KASAN_SHADOW_OFFSET, UL)
 
