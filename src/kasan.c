@@ -18,6 +18,7 @@
 #include "page.h"
 #include "alloc.h"
 #include "process_handle.h"
+#include "report.h"
 
 #define MINOR_BASE 	0
 #define MINOR_NUM 	1
@@ -26,7 +27,7 @@
 
 MODULE_DESCRIPTION("BoKASAN");
 MODULE_AUTHOR("Mingi Cho");
-MODULE_LICENSE("GPL2");
+MODULE_LICENSE("GPL");
 
 unsigned long g_vaddr;
 int major;
@@ -763,6 +764,7 @@ static int fh_init(void)
 
 	bokasan_chardev_init();
 	init_kasan();
+	init_report();
 
 	err = fh_install_hooks(bokasan_hooks, ARRAY_SIZE(bokasan_hooks));
 
