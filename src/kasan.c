@@ -57,12 +57,23 @@ static long bokasan_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 		case SET_PID:
 			if(copy_from_user(&inf, (void __user *)arg, sizeof(inf)) > 0) return 0;
 
-			add_pid(inf.pid);
+			if (inf.pid) {
+				add_pid(inf.pid);
+			}
+			else {	// pid == 0 means add current pid
+				add_pid(task_pid_nr(current));
+				printk("Registered current pid: %d\n", task_pid_nr(current));
+			}
 			break;
 		case REMOVE_PID:
 			if(copy_from_user(&inf, (void __user *)arg, sizeof(inf)) > 0) return 0;
 
-			remove_pid(inf.pid);
+			if (inf.pid) {
+				remove_pid(inf.pid);
+			} else {
+				remove_pid(task_pid_nr(current));
+				printk("Removed current pid: %d\n", task_pid_nr(current));
+			}
 			break;
 		default:
 			printk("there is no such cmd\n");
