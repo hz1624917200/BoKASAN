@@ -67,6 +67,13 @@ void pages_clear_present_bit(unsigned long vaddr, size_t size){
 	}
 }
 
+void pages_set_present_bit(unsigned long vaddr, size_t size){
+	int i = 0;
+	for(; i <= (size-1) / PAGE_SIZE; i++){
+		set_present_bit(vaddr + i * PAGE_SIZE);
+	}
+}
+
 void clear_present_bit(unsigned long vaddr){
 	pte_t *pte;
 	pteval_t val;

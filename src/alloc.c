@@ -31,27 +31,43 @@ inline void *kasan_mem_to_shadow(const void *addr){
 }
 
 void init_kasan(void){
-	unsigned long vaddr = 0xffff880000100000;
-	unsigned long shadow_start, shadow_end;
-	size_t size = 0x2000;
+	// unsigned long vaddr = 0xffff880000100000;
+	// unsigned long shadow_start, shadow_end;
+	// size_t size = 0x20000;
 
 	__vmalloc_node_range_ = (void *)kallsyms_lookup_name("__vmalloc_node_range");
 	change_page_attr_set_clr_ = (void*) kallsyms_lookup_name("change_page_attr_set_clr");
 
 	// TODO: test alloc
-	void* test_kobj;
-	test_kobj = kmalloc(size, GFP_KERNEL);
-	printk("test_kobj %px\n", test_kobj);
-	shadow_start = (unsigned long)kasan_mem_to_shadow((void*)test_kobj);
-	shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
-	g_shadow_memory = __vmalloc_node_range_(size >> KASAN_SHADOW_SCALE_SHIFT, 1,
-			shadow_start, shadow_end,
-			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL,
-			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
-			__builtin_return_address(0));
-	bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
-	pages_clear_present_bit((unsigned long)test_kobj, size);
+	// int i;
+	// for (i = 0; i < 10; i++) {
+	// void* test_kobj;
+	// test_kobj = kmalloc(size, GFP_KERNEL);
+	// printk("test_kobj %px\n", test_kobj);
+	// shadow_start = (unsigned long)kasan_mem_to_shadow((void*)test_kobj);
+	// shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
 
+	// // shadow_start = 0xffa0100000000000;
+	// // shadow_end = 0xffa0100000000000 + (size >> 3);
+	// printk("Shadow memory %px - %px\n", (void*)shadow_start, (void*)shadow_end);
+	// g_shadow_memory = __vmalloc_node_range_(shadow_end - shadow_start, 1,
+	// 		shadow_start, shadow_end,
+	// 		GFP_KERNEL | __GFP_ZERO,
+	// 		PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
+	// 		__builtin_return_address(0));
+	// if (g_shadow_memory) {
+	// 	bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
+	// }
+	// printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
+	// printk("End poison region\n");
+	// if (test_kobj) {
+	// 	pages_clear_present_bit((unsigned long)test_kobj, size);
+	// 	pages_set_present_bit((unsigned long)test_kobj, size);
+	// }
+	// vfree(shadow_start);
+	// if (test_kobj)
+	// 	kfree(test_kobj);
+	// }
 	// shadow_start = (unsigned long)kasan_mem_to_shadow((void*)vaddr);
 	// shadow_end = (unsigned long)kasan_mem_to_shadow((void*)vaddr + size);
 
@@ -348,6 +364,7 @@ void bokasan_poison_shadow(const void *address, size_t size, u8 value)
 	shadow_start = kasan_mem_to_shadow(address);
 	shadow_end = kasan_mem_to_shadow(address + size);
 
+	printk("Poison region %px - %px\n", shadow_start, shadow_end);
 	memset(shadow_start, value, shadow_end - shadow_start);
 }
 
