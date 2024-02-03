@@ -18,6 +18,7 @@
 		"report.h": "c",
 		"mempool.h": "c",
 		"version.h": "c",
-		"alloc.h": "c"
+		"alloc.h": "c",
+		"vmalloc.h": "c"
 	}
 }

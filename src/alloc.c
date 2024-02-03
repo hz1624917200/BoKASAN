@@ -5,6 +5,7 @@
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/mm.h>
+#include <linux/vmalloc.h>
 
 #include <asm/pgtable_types.h>
 #include <asm/pgtable.h>
@@ -23,49 +24,124 @@ void* (* __vmalloc_node_range_)(unsigned long size, unsigned long align,
 			pgprot_t prot, unsigned long vm_flags, int node,
 			const void *caller);
 
-int (* change_page_attr_set_clr_)(unsigned long *addr, int numpages, pgprot_t mask_set, pgprot_t mask_clr,
+int (* _change_page_attr_set_clr)(unsigned long *addr, int numpages, pgprot_t mask_set, pgprot_t mask_clr,
 				    int force_split, int in_flag, struct page **pages);
+
+// find vm_struct by address
+struct vm_struct* (*_find_vm_area)(unsigned long vaddr);
+
+void (*_vmalloc_sync_mappings)(void);
 
 inline void *kasan_mem_to_shadow(const void *addr){
 	return (void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET;
 }
 
 void init_kasan(void){
-	// unsigned long vaddr = 0xffff880000100000;
-	// unsigned long shadow_start, shadow_end;
-	// size_t size = 0x20000;
+	unsigned long vaddr = 0xffff880000100000;
+	unsigned long shadow_start, shadow_end;
+	size_t size = 0x20000;
+	int i;
+	pgd_t *pgd, *pgd_ref;
+	struct vm_struct *area;
+	struct mm_struct *_init_mm;
 
 	__vmalloc_node_range_ = (void *)kallsyms_lookup_name("__vmalloc_node_range");
-	change_page_attr_set_clr_ = (void*) kallsyms_lookup_name("change_page_attr_set_clr");
+	_change_page_attr_set_clr = (void*) kallsyms_lookup_name("change_page_attr_set_clr");
+	_find_vm_area = (void*) kallsyms_lookup_name("find_vm_area");
+	_init_mm = (void*) kallsyms_lookup_name("init_mm");
+	_vmalloc_sync_mappings = (void*) kallsyms_lookup_name("vmalloc_sync_mappings");
 
-	// TODO: test alloc
-	// int i;
-	// for (i = 0; i < 10; i++) {
+
 	// void* test_kobj;
 	// test_kobj = kmalloc(size, GFP_KERNEL);
 	// printk("test_kobj %px\n", test_kobj);
 	// shadow_start = (unsigned long)kasan_mem_to_shadow((void*)test_kobj);
 	// shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
 
-	// // shadow_start = 0xffa0100000000000;
-	// // shadow_end = 0xffa0100000000000 + (size >> 3);
+	// shadow_start = 0xfffffe1000000000;		// passed
+	shadow_start = 0xffd2100000000000;			// failed
+	shadow_end = shadow_start + (size >> 3);
+	pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_start);
+	printk("Before vmalloc: pgd %px\n", pgd);
+	if (pgd_none(*pgd)) {
+		printk("pgd_none\n");
+	} else {
+		printk("pgd_val %lx\n", pgd_val(*pgd));
+	}
+	pgd_ref = (pgd_t *) pgd_offset(_init_mm, (unsigned long)shadow_start);	// same as pgd_offset_k(vaddr)
+	printk("Before vmalloc (init_mm): pgd %px\n", pgd_ref);
+	if (pgd_none(*pgd_ref)) {
+		printk("pgd_none\n");
+	} else {
+		printk("pgd_val %lx\n", pgd_val(*pgd));
+	}
+	g_shadow_memory = __vmalloc_node_range_(shadow_end - shadow_start, 1,
+			shadow_start, shadow_end,
+			GFP_KERNEL | __GFP_ZERO,
+			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,		// TODO: test cancel VM_NO_GUARD
+			__builtin_return_address(0));
+	// g_shadow_memory = vmalloc(shadow_end - shadow_start);
+	if (g_shadow_memory) {
+		printk("g_shadow_memory %px\n", g_shadow_memory);
+		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)g_shadow_memory);
+		printk("After vmalloc: pgd %px\n", pgd);
+		if (pgd_none(*pgd)) {
+			printk("pgd_none\n");
+		} else {
+			printk("pgd_val %lx\n", pgd_val(*pgd));
+		}
+		// sync pgd manually
+		set_pgd(pgd, *pgd_ref);
+		printk("After sync: pgd %px\n", pgd);
+		if (pgd_none(*pgd)) {
+			printk("pgd_none\n");
+		} else {
+			printk("pgd_val %lx\n", pgd_val(*pgd));
+		}
+		// area = _find_vm_area((unsigned long)g_shadow_memory);
+		// printk("area %px\n", area);
+		// // print area info
+		// printk("area->addr %px\n", area->addr);
+		// printk("area->size %lx\n", area->size);
+		// printk("area->flags %lx\n", area->flags);
+		// printk("area->nr_pages %u\n", area->nr_pages);
+		// for (i = 0; i < area->nr_pages; i++) {
+		// 	printk("area->pages[%d] %px\n", i, area->pages[i]);
+		// }
+		((char*)g_shadow_memory)[0] = 0x2b;
+		printk("g_shadow_memory[0] 0x%hhx\n", ((char*)g_shadow_memory)[0]);
+		vfree(g_shadow_memory);
+		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)g_shadow_memory);
+		printk("After vfree: pgd %px\n", pgd);
+		if (pgd_none(*pgd)) {
+			printk("pgd_none\n");
+		} else {
+			printk("pgd_val %lx\n", pgd_val(*pgd));
+		}
+	}
 	// printk("Shadow memory %px - %px\n", (void*)shadow_start, (void*)shadow_end);
 	// g_shadow_memory = __vmalloc_node_range_(shadow_end - shadow_start, 1,
 	// 		shadow_start, shadow_end,
 	// 		GFP_KERNEL | __GFP_ZERO,
 	// 		PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
 	// 		__builtin_return_address(0));
-	// if (g_shadow_memory) {
-	// 	bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
-	// }
-	// printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
-	// printk("End poison region\n");
+	// printk("Start poison region\n");
+	// *(char*)g_shadow_memory = i;
+	// printk("Memory content: %hhd\n", *(char*)g_shadow_memory);
+	// // if (g_shadow_memory) {
+	// // 	bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
+	// // }
+	// // printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
+	// // printk("End poison region\n");
 	// if (test_kobj) {
 	// 	pages_clear_present_bit((unsigned long)test_kobj, size);
 	// 	pages_set_present_bit((unsigned long)test_kobj, size);
 	// }
+	// pgd_t *pgd;
+	// pgd = pgd_offset(current->mm, shadow_start);
+	// printk("pgd %px\n", pgd);
 	// vfree(shadow_start);
-	// if (test_kobj)
+	// if (test_kobj) {
 	// 	kfree(test_kobj);
 	// }
 	// shadow_start = (unsigned long)kasan_mem_to_shadow((void*)vaddr);
@@ -194,10 +270,10 @@ void make_4k_page(void* object){
 
 		if(is_current_pid_present()){
 			remove_pid(pid);
-			change_page_attr_set_clr_(&addr, 1, __pgprot(0), __pgprot(0), 1, 0, NULL);		// Split the pages to 4K size
+			_change_page_attr_set_clr(&addr, 1, __pgprot(0), __pgprot(0), 1, 0, NULL);		// Split the pages to 4K size
 			add_pid(pid);
 		} else{
-			change_page_attr_set_clr_(&addr, 1, __pgprot(0), __pgprot(0), 1, 0, NULL);
+			_change_page_attr_set_clr(&addr, 1, __pgprot(0), __pgprot(0), 1, 0, NULL);
 		}
 	}
 }

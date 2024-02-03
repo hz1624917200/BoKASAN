@@ -36,6 +36,7 @@ __attribute__((section("__versions"))) = {
 	{ 0x70304faa, "device_destroy" },
 	{ 0xc29957c3, "__x86_indirect_thunk_rcx" },
 	{ 0x6091b333, "unregister_chrdev_region" },
+	{ 0x999e8297, "vfree" },
 	{ 0x4629334c, "__preempt_count" },
 	{ 0x97651e6c, "vmemmap_base" },
 	{ 0xfb578fc5, "memset" },
@@ -58,6 +59,7 @@ __attribute__((section("__versions"))) = {
 	{ 0x71c0e748, "pv_cpu_ops" },
 	{ 0xbdfb6dbb, "__fentry__" },
 	{ 0x8b9200fd, "lookup_address" },
+	{ 0x72d79d83, "pgdir_shift" },
 	{ 0xb96b1096, "pv_mmu_ops" },
 	{ 0x91a5c02c, "register_ftrace_function" },
 	{ 0xabefed30, "class_destroy" },
@@ -74,4 +76,4 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "45494FE1DFAA36B4542CE66");
+MODULE_INFO(srcversion, "7B5B68C663B8010DAAD59F6");
