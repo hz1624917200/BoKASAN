@@ -18,6 +18,7 @@
 #include <stdbool.h>
 
 void* g_shadow_memory;
+struct mm_struct *_init_mm;
 
 void* (* __vmalloc_node_range_)(unsigned long size, unsigned long align,
 			unsigned long start, unsigned long end, gfp_t gfp_mask,
@@ -27,40 +28,45 @@ void* (* __vmalloc_node_range_)(unsigned long size, unsigned long align,
 int (* _change_page_attr_set_clr)(unsigned long *addr, int numpages, pgprot_t mask_set, pgprot_t mask_clr,
 				    int force_split, int in_flag, struct page **pages);
 
-// find vm_struct by address
-struct vm_struct* (*_find_vm_area)(unsigned long vaddr);
-
-void (*_vmalloc_sync_mappings)(void);
-
 inline void *kasan_mem_to_shadow(const void *addr){
 	return (void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET;
 }
 
+// vmalloc using __vmalloc_node_range and sync pgd manually
+void* vmalloc_sync(unsigned long size, unsigned long start) {
+	void* vaddr;
+	pgd_t *pgd, *pgd_ref;
+	
+	vaddr = __vmalloc_node_range_(size, 1, start, start + size,
+			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL, PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
+			__builtin_return_address(0));
+	pgd = (pgd_t *) pgd_offset(current->mm, start);
+	if (unlikely(pgd_none(*pgd))) {
+		pgd_ref = (pgd_t *) pgd_offset(_init_mm, start);
+		set_pgd(pgd, *pgd_ref);
+	}
+	return vaddr;
+}
+
 void init_kasan(void){
-	unsigned long vaddr = 0xffff880000100000;
 	unsigned long shadow_start, shadow_end;
 	size_t size = 0x20000;
 	int i;
 	pgd_t *pgd, *pgd_ref;
 	struct vm_struct *area;
-	struct mm_struct *_init_mm;
+	void* test_kobj;
 
 	__vmalloc_node_range_ = (void *)kallsyms_lookup_name("__vmalloc_node_range");
 	_change_page_attr_set_clr = (void*) kallsyms_lookup_name("change_page_attr_set_clr");
-	_find_vm_area = (void*) kallsyms_lookup_name("find_vm_area");
 	_init_mm = (void*) kallsyms_lookup_name("init_mm");
-	_vmalloc_sync_mappings = (void*) kallsyms_lookup_name("vmalloc_sync_mappings");
 
 
-	// void* test_kobj;
-	// test_kobj = kmalloc(size, GFP_KERNEL);
-	// printk("test_kobj %px\n", test_kobj);
-	// shadow_start = (unsigned long)kasan_mem_to_shadow((void*)test_kobj);
-	// shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
+	test_kobj = kmalloc(size, GFP_KERNEL);
+	printk("test_kobj %px\n", test_kobj);
+	shadow_start = (unsigned long)kasan_mem_to_shadow((void*)test_kobj);
+	shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
+	printk("Shadow memory %px - %px\n", (void*)shadow_start, (void*)shadow_end);
 
-	// shadow_start = 0xfffffe1000000000;		// passed
-	shadow_start = 0xffd2100000000000;			// failed
-	shadow_end = shadow_start + (size >> 3);
 	pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_start);
 	printk("Before vmalloc: pgd %px\n", pgd);
 	if (pgd_none(*pgd)) {
@@ -78,18 +84,19 @@ void init_kasan(void){
 	g_shadow_memory = __vmalloc_node_range_(shadow_end - shadow_start, 1,
 			shadow_start, shadow_end,
 			GFP_KERNEL | __GFP_ZERO,
-			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,		// TODO: test cancel VM_NO_GUARD
+			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
 			__builtin_return_address(0));
-	// g_shadow_memory = vmalloc(shadow_end - shadow_start);
+
 	if (g_shadow_memory) {
 		printk("g_shadow_memory %px\n", g_shadow_memory);
-		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)g_shadow_memory);
-		printk("After vmalloc: pgd %px\n", pgd);
-		if (pgd_none(*pgd)) {
+
+		printk("After vmalloc: pgd_ref %px\n", pgd_ref);
+		if (pgd_none(*pgd_ref)) {
 			printk("pgd_none\n");
 		} else {
-			printk("pgd_val %lx\n", pgd_val(*pgd));
+			printk("pgd_val %lx\n", pgd_val(*pgd_ref));
 		}
+
 		// sync pgd manually
 		set_pgd(pgd, *pgd_ref);
 		printk("After sync: pgd %px\n", pgd);
@@ -98,64 +105,20 @@ void init_kasan(void){
 		} else {
 			printk("pgd_val %lx\n", pgd_val(*pgd));
 		}
-		// area = _find_vm_area((unsigned long)g_shadow_memory);
-		// printk("area %px\n", area);
-		// // print area info
-		// printk("area->addr %px\n", area->addr);
-		// printk("area->size %lx\n", area->size);
-		// printk("area->flags %lx\n", area->flags);
-		// printk("area->nr_pages %u\n", area->nr_pages);
-		// for (i = 0; i < area->nr_pages; i++) {
-		// 	printk("area->pages[%d] %px\n", i, area->pages[i]);
-		// }
-		((char*)g_shadow_memory)[0] = 0x2b;
-		printk("g_shadow_memory[0] 0x%hhx\n", ((char*)g_shadow_memory)[0]);
+		
+		// Test access
+		// ((char*)g_shadow_memory)[0] = 0x2b;
+		// printk("g_shadow_memory[0] 0x%hhx\n", ((char*)g_shadow_memory)[0]);
+		bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
+		printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
 		vfree(g_shadow_memory);
-		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)g_shadow_memory);
-		printk("After vfree: pgd %px\n", pgd);
-		if (pgd_none(*pgd)) {
-			printk("pgd_none\n");
-		} else {
-			printk("pgd_val %lx\n", pgd_val(*pgd));
-		}
 	}
-	// printk("Shadow memory %px - %px\n", (void*)shadow_start, (void*)shadow_end);
-	// g_shadow_memory = __vmalloc_node_range_(shadow_end - shadow_start, 1,
-	// 		shadow_start, shadow_end,
-	// 		GFP_KERNEL | __GFP_ZERO,
-	// 		PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
-	// 		__builtin_return_address(0));
-	// printk("Start poison region\n");
-	// *(char*)g_shadow_memory = i;
-	// printk("Memory content: %hhd\n", *(char*)g_shadow_memory);
-	// // if (g_shadow_memory) {
-	// // 	bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
-	// // }
-	// // printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
-	// // printk("End poison region\n");
-	// if (test_kobj) {
-	// 	pages_clear_present_bit((unsigned long)test_kobj, size);
-	// 	pages_set_present_bit((unsigned long)test_kobj, size);
-	// }
-	// pgd_t *pgd;
-	// pgd = pgd_offset(current->mm, shadow_start);
-	// printk("pgd %px\n", pgd);
-	// vfree(shadow_start);
-	// if (test_kobj) {
-	// 	kfree(test_kobj);
-	// }
-	// shadow_start = (unsigned long)kasan_mem_to_shadow((void*)vaddr);
-	// shadow_end = (unsigned long)kasan_mem_to_shadow((void*)vaddr + size);
 
-	// g_shadow_memory = __vmalloc_node_range_(size >> KASAN_SHADOW_SCALE_SHIFT, 1,
-	// 		shadow_start, shadow_end,
-	// 		GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL,
-	// 		PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
-	// 		__builtin_return_address(0));
+	if (test_kobj) {
+		pages_clear_present_bit((unsigned long)test_kobj, size);
+		kfree(test_kobj);
+	}
 
-	// bokasan_poison_shadow((void*)vaddr, size, BOKASAN_FREE_PAGE);
-
-	// pages_clear_present_bit(vaddr, size);
 }
 
 static inline size_t slab_ksize(const struct kmem_cache *s)
@@ -488,11 +451,7 @@ bool alloc_shadow_page_1m(unsigned long shadow_start){
 
 	remove_pid(pid);
 
-	g_shadow_memory = __vmalloc_node_range_(PAGE_SIZE*page_count, 1,
-			shadow_start, shadow_start+PAGE_SIZE*page_count,
-			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL,
-			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
-			__builtin_return_address(0));
+	g_shadow_memory = vmalloc_sync(PAGE_SIZE*page_count, shadow_start);
 
 	if(pid != -1) add_pid(pid);
 
@@ -516,11 +475,7 @@ bool alloc_shadow_page(unsigned long shadow_start){
 
 	remove_pid(pid);
 
-	g_shadow_memory = __vmalloc_node_range_(PAGE_SIZE, 1,
-			shadow_start, shadow_start+PAGE_SIZE,
-			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL,
-			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
-			__builtin_return_address(0));
+	g_shadow_memory = vmalloc_sync(PAGE_SIZE, shadow_start);
 
 	if(pid != -1) add_pid(pid);
 
@@ -528,11 +483,7 @@ bool alloc_shadow_page(unsigned long shadow_start){
 
 	remove_pid(pid);
 
-	g_shadow_memory = __vmalloc_node_range_(PAGE_SIZE*2, 1,
-			shadow_start, shadow_start+PAGE_SIZE*2,
-			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL,
-			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
-			__builtin_return_address(0));
+	g_shadow_memory = vmalloc_sync(PAGE_SIZE*2, shadow_start);
 
 	if(pid != -1) add_pid(pid);
 
@@ -540,11 +491,7 @@ bool alloc_shadow_page(unsigned long shadow_start){
 
 	remove_pid(pid);
 
-	g_shadow_memory = __vmalloc_node_range_(PAGE_SIZE*4, 1,
-			shadow_start, shadow_start+PAGE_SIZE*4,
-			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL,
-			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
-			__builtin_return_address(0));
+	g_shadow_memory = vmalloc_sync(PAGE_SIZE*4, shadow_start);
 
 	if(pid != -1) add_pid(pid);
 

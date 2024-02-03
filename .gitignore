@@ -5,3 +5,5 @@
 *.mod
 *.order
 
+*.mod.c
+.cache.mk
