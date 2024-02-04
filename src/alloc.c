@@ -51,9 +51,7 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 void init_kasan(void){
 	unsigned long shadow_start, shadow_end;
 	size_t size = 0x20000;
-	int i;
 	pgd_t *pgd, *pgd_ref;
-	struct vm_struct *area;
 	void* test_kobj;
 
 	__vmalloc_node_range_ = (void *)kallsyms_lookup_name("__vmalloc_node_range");
@@ -116,6 +114,7 @@ void init_kasan(void){
 
 	if (test_kobj) {
 		pages_clear_present_bit((unsigned long)test_kobj, size);
+		pages_set_present_bit((unsigned long)test_kobj, size);
 		kfree(test_kobj);
 	}
 
@@ -403,7 +402,7 @@ void bokasan_poison_shadow(const void *address, size_t size, u8 value)
 	shadow_start = kasan_mem_to_shadow(address);
 	shadow_end = kasan_mem_to_shadow(address + size);
 
-	printk("Poison region %px - %px\n", shadow_start, shadow_end);
+	printk("Poison region %px - %px: %hhx\n", shadow_start, shadow_end, value);
 	memset(shadow_start, value, shadow_end - shadow_start);
 }
 
