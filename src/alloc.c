@@ -6,6 +6,8 @@
 #include <linux/slab.h>
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
+#include <linux/sched/task.h>
+#include <linux/sched/signal.h>
 
 #include <asm/pgtable_types.h>
 #include <asm/pgtable.h>
@@ -15,6 +17,7 @@
 #include "page.h"
 #include "report.h"
 #include "process_handle.h"
+#include "config.h"
 #include <stdbool.h>
 
 void* g_shadow_memory;
@@ -28,85 +31,69 @@ void* (* __vmalloc_node_range_)(unsigned long size, unsigned long align,
 int (* _change_page_attr_set_clr)(unsigned long *addr, int numpages, pgprot_t mask_set, pgprot_t mask_clr,
 				    int force_split, int in_flag, struct page **pages);
 
+// #define kasan_mem_to_shadow(addr) ((void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET)
 inline void *kasan_mem_to_shadow(const void *addr){
-	return (void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET;
+	void* shadow_addr;
+	pgd_t *pgd;
+	shadow_addr = (void*)(((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET);
+	if (current->mm != NULL && current->pid != 1) {
+		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_addr);
+		if (unlikely(pgd_none(*pgd))) {
+			printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; shadow_addr %px pgd %px pgd_none\n", current->pid, shadow_addr, pgd);
+		}
+	}
+	return shadow_addr;
 }
 
 // vmalloc using __vmalloc_node_range and sync pgd manually
 void* vmalloc_sync(unsigned long size, unsigned long start) {
 	void* vaddr;
 	pgd_t *pgd, *pgd_ref;
+	struct task_struct *task;
 	
+	printk("BoKASAN: vmalloc %lx - %lx; mm %px\n", start, start + size, current->mm);
 	vaddr = __vmalloc_node_range_(size, 1, start, start + size,
 			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL, PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
 			__builtin_return_address(0));
 	pgd = (pgd_t *) pgd_offset(current->mm, start);
 	if (unlikely(pgd_none(*pgd))) {
 		pgd_ref = (pgd_t *) pgd_offset(_init_mm, start);
-		set_pgd(pgd, *pgd_ref);
+		// set_pgd(pgd, *pgd_ref);
+
+		// sync the new allocated pgd info to all procs
+		for_each_process(task) {
+			if (task->mm != NULL) {
+				pgd = (pgd_t *) pgd_offset(task->mm, start);
+				set_pgd(pgd, *pgd_ref);
+			}
+		}
+
 	}
 	return vaddr;
 }
 
 void init_kasan(void){
+#if INIT_TEST
 	unsigned long shadow_start, shadow_end;
 	size_t size = 0x20000;
-	pgd_t *pgd, *pgd_ref;
 	void* test_kobj;
+#endif
 
 	__vmalloc_node_range_ = (void *)kallsyms_lookup_name("__vmalloc_node_range");
 	_change_page_attr_set_clr = (void*) kallsyms_lookup_name("change_page_attr_set_clr");
 	_init_mm = (void*) kallsyms_lookup_name("init_mm");
 
-
+#if INIT_TEST
 	test_kobj = kmalloc(size, GFP_KERNEL);
 	printk("test_kobj %px\n", test_kobj);
 	shadow_start = (unsigned long)kasan_mem_to_shadow((void*)test_kobj);
 	shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
 	printk("Shadow memory %px - %px\n", (void*)shadow_start, (void*)shadow_end);
 
-	pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_start);
-	printk("Before vmalloc: pgd %px\n", pgd);
-	if (pgd_none(*pgd)) {
-		printk("pgd_none\n");
-	} else {
-		printk("pgd_val %lx\n", pgd_val(*pgd));
-	}
-	pgd_ref = (pgd_t *) pgd_offset(_init_mm, (unsigned long)shadow_start);	// same as pgd_offset_k(vaddr)
-	printk("Before vmalloc (init_mm): pgd %px\n", pgd_ref);
-	if (pgd_none(*pgd_ref)) {
-		printk("pgd_none\n");
-	} else {
-		printk("pgd_val %lx\n", pgd_val(*pgd));
-	}
-	g_shadow_memory = __vmalloc_node_range_(shadow_end - shadow_start, 1,
-			shadow_start, shadow_end,
-			GFP_KERNEL | __GFP_ZERO,
-			PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
-			__builtin_return_address(0));
-
+	vmalloc_sync(shadow_end - shadow_start, shadow_start);
 	if (g_shadow_memory) {
 		printk("g_shadow_memory %px\n", g_shadow_memory);
 
-		printk("After vmalloc: pgd_ref %px\n", pgd_ref);
-		if (pgd_none(*pgd_ref)) {
-			printk("pgd_none\n");
-		} else {
-			printk("pgd_val %lx\n", pgd_val(*pgd_ref));
-		}
-
-		// sync pgd manually
-		set_pgd(pgd, *pgd_ref);
-		printk("After sync: pgd %px\n", pgd);
-		if (pgd_none(*pgd)) {
-			printk("pgd_none\n");
-		} else {
-			printk("pgd_val %lx\n", pgd_val(*pgd));
-		}
-		
-		// Test access
-		// ((char*)g_shadow_memory)[0] = 0x2b;
-		// printk("g_shadow_memory[0] 0x%hhx\n", ((char*)g_shadow_memory)[0]);
 		bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
 		printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
 		vfree(g_shadow_memory);
@@ -117,6 +104,7 @@ void init_kasan(void){
 		pages_set_present_bit((unsigned long)test_kobj, size);
 		kfree(test_kobj);
 	}
+#endif
 
 }
 
@@ -316,6 +304,7 @@ static __always_inline bool memory_is_poisoned_1(unsigned long addr)
 	return false;
 }
 
+// 
 void clear_kasan_alloc_shadow(unsigned long vaddr){
 	size_t size;
 	unsigned long start;
@@ -402,7 +391,10 @@ void bokasan_poison_shadow(const void *address, size_t size, u8 value)
 	shadow_start = kasan_mem_to_shadow(address);
 	shadow_end = kasan_mem_to_shadow(address + size);
 
+#if DEBUG
 	printk("Poison region %px - %px: %hhx\n", shadow_start, shadow_end, value);
+#endif
+
 	memset(shadow_start, value, shadow_end - shadow_start);
 }
 
@@ -504,6 +496,10 @@ bool alloc_shadow(size_t size, unsigned long addr){
 	unsigned long addr_first = 0, addr_last = 0;
 
 	if(size == 0) return false;
+
+#if DEBUG
+	printk("Allocating shadow memory %lx - %lx\n", addr, addr + size);
+#endif
 
 	addr_first = addr & ~(PAGE_SIZE-1);
 	addr_last = PAGE_ALIGN(addr + size) - 1;

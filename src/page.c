@@ -7,6 +7,7 @@
 
 #include "page.h"
 #include "alloc.h"
+#include "config.h"
 
 bool is_page_special(unsigned long vaddr){
 	unsigned int l;
@@ -51,7 +52,7 @@ void set_present_bit(unsigned long vaddr){
 	} else if(l == PG_LEVEL_2M){
 
 	} else{
-			printk("[set_present_bit] page 4K nor 2M\n");
+			printk("BoKASAN warning: [set_present_bit] page 4K nor 2M\n");
 	}
 }
 
@@ -92,11 +93,11 @@ void clear_present_bit(unsigned long vaddr){
 			set_pte(pte, __pte(val));
 			__flush_tlb_all();
 
-			// printk("[clear_present_bit] vaddr = 0x%lx pte val = 0x%lx\n", vaddr, val);
+			// printk("BoKASAN warning: [clear_present_bit] vaddr = 0x%lx pte val = 0x%lx\n", vaddr, val);
 		}
 	} else if(l == PG_LEVEL_2M) {
 
 	} else{
-		printk("[clear_present_bit] not level 4K or 2M\n");
+		printk("BoKASAN warning: [clear_present_bit] not level 4K or 2M\n");
 	}
 }
