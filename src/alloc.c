@@ -51,7 +51,9 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 	pgd_t *pgd, *pgd_ref;
 	struct task_struct *task;
 	
+#if DEBUG
 	printk("BoKASAN: vmalloc %lx - %lx; mm %px\n", start, start + size, current->mm);
+#endif
 	vaddr = __vmalloc_node_range_(size, 1, start, start + size,
 			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL, PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
 			__builtin_return_address(0));
@@ -62,7 +64,9 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 
 		// sync the new allocated pgd info to all procs
 		for_each_process(task) {
+			// printk("bokasan: discover PID %d\n", task->pid);
 			if (task->mm != NULL) {
+				// printk("boksasn: sync PID %d\n", task->pid);
 				pgd = (pgd_t *) pgd_offset(task->mm, start);
 				set_pgd(pgd, *pgd_ref);
 			}
