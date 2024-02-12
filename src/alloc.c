@@ -39,7 +39,8 @@ inline void *kasan_mem_to_shadow(const void *addr){
 	if (current->mm != NULL && current->pid != 1) {
 		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_addr);
 		if (unlikely(pgd_none(*pgd))) {
-			printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; shadow_addr %px pgd %px pgd_none\n", current->pid, shadow_addr, pgd);
+			printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; addr %px shadow_addr %px pgd %px pgd_none\n", current->pid, addr, shadow_addr, pgd);
+			dump_stack();
 		}
 	}
 	return shadow_addr;
@@ -532,7 +533,7 @@ bool bokasan_kmalloc(const void *object, size_t size){
 	unsigned long redzone_start;
 	unsigned long redzone_end;
 
-	if(unlikely(object == NULL)) return false;
+	if(unlikely(ZERO_OR_NULL_PTR(object))) return false;
 
 	redzone_start = round_up((unsigned long)object + size,
 				KASAN_SHADOW_SCALE_SIZE);
@@ -566,7 +567,7 @@ bool bokasan_kmalloc_large(const void *object, size_t size, gfp_t flags)
 	unsigned long redzone_start;
 	unsigned long redzone_end;
 
-	if (unlikely(object == NULL))
+	if (unlikely(ZERO_OR_NULL_PTR(object)))
 		return false;
 
 	page = virt_to_page(object);
