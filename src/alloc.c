@@ -220,7 +220,7 @@ void make_4k_page(void* object){
 	lookup_address((unsigned long)object, &l);
 
 	if(l == PG_LEVEL_2M || l == PG_LEVEL_1G){
-		addr = (unsigned long) object;
+		addr = (unsigned long) object & PAGE_MASK;
 
 		if(is_current_pid_present()){
 			remove_pid(pid);
