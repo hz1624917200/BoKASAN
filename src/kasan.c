@@ -523,7 +523,7 @@ static asmlinkage void* fh___kmalloc_node_track_caller(size_t size, gfp_t gfpfla
 static asmlinkage void fh_kzfree(void *objp){
 	struct page *page;
 
-	if(objp == NULL) return;
+	if(unlikely(ZERO_OR_NULL_PTR(objp))) return;
 
 	if(is_shadow_page_exist((unsigned long)objp) && is_bokasan_allocated((unsigned long)objp)){
 		size_t size = ksize_(objp);
@@ -546,7 +546,7 @@ static asmlinkage void fh_kzfree(void *objp){
 static asmlinkage void fh_kfree(void *objp){
 	struct page *page;
 
-	if(objp == NULL) return;
+	if(unlikely(ZERO_OR_NULL_PTR(objp))) return;
 
 	if(is_shadow_page_exist((unsigned long)objp) && is_bokasan_allocated((unsigned long)objp)){
 		size_t size = ksize_(objp);
@@ -567,7 +567,7 @@ static asmlinkage void fh_kfree(void *objp){
 }
 
 static asmlinkage void fh_kmem_cache_free(struct kmem_cache *cachep, void *objp){
-	if(objp == NULL) return;
+	if(unlikely(ZERO_OR_NULL_PTR(objp))) return;
 
 	if(is_shadow_page_exist((unsigned long)objp) && is_bokasan_allocated((unsigned long)objp)){
 		size_t size = ksize_(objp);

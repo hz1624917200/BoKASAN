@@ -39,7 +39,8 @@ inline void *kasan_mem_to_shadow(const void *addr){
 	if (current->mm != NULL && current->pid != 1) {
 		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_addr);
 		if (unlikely(pgd_none(*pgd))) {
-			printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; shadow_addr %px pgd %px pgd_none\n", current->pid, shadow_addr, pgd);
+			printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; addr %px shadow_addr %px pgd %px pgd_none\n", current->pid, addr, shadow_addr, pgd);
+			dump_stack();
 		}
 	}
 	return shadow_addr;
@@ -51,7 +52,9 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 	pgd_t *pgd, *pgd_ref;
 	struct task_struct *task;
 	
+#if DEBUG
 	printk("BoKASAN: vmalloc %lx - %lx; mm %px\n", start, start + size, current->mm);
+#endif
 	vaddr = __vmalloc_node_range_(size, 1, start, start + size,
 			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL, PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
 			__builtin_return_address(0));
@@ -62,7 +65,9 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 
 		// sync the new allocated pgd info to all procs
 		for_each_process(task) {
+			// printk("bokasan: discover PID %d\n", task->pid);
 			if (task->mm != NULL) {
+				// printk("boksasn: sync PID %d\n", task->pid);
 				pgd = (pgd_t *) pgd_offset(task->mm, start);
 				set_pgd(pgd, *pgd_ref);
 			}
@@ -216,7 +221,7 @@ void make_4k_page(void* object){
 	lookup_address((unsigned long)object, &l);
 
 	if(l == PG_LEVEL_2M || l == PG_LEVEL_1G){
-		addr = (unsigned long) object;
+		addr = (unsigned long) object & PAGE_MASK;
 
 		if(is_current_pid_present()){
 			remove_pid(pid);
@@ -528,7 +533,7 @@ bool bokasan_kmalloc(const void *object, size_t size){
 	unsigned long redzone_start;
 	unsigned long redzone_end;
 
-	if(unlikely(object == NULL)) return false;
+	if(unlikely(ZERO_OR_NULL_PTR(object))) return false;
 
 	redzone_start = round_up((unsigned long)object + size,
 				KASAN_SHADOW_SCALE_SIZE);
@@ -562,7 +567,7 @@ bool bokasan_kmalloc_large(const void *object, size_t size, gfp_t flags)
 	unsigned long redzone_start;
 	unsigned long redzone_end;
 
-	if (unlikely(object == NULL))
+	if (unlikely(ZERO_OR_NULL_PTR(object)))
 		return false;
 
 	page = virt_to_page(object);
