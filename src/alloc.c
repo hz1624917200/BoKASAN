@@ -53,7 +53,7 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 	struct task_struct *task;
 	
 #if DEBUG
-	printk("BoKASAN: vmalloc %lx - %lx; mm %px\n", start, start + size, current->mm);
+	printk("BoKASAN: vmalloc %lx - %lx; pid %u; mm %px\n", start, start + size, current->pid, current->mm);
 #endif
 	vaddr = __vmalloc_node_range_(size, 1, start, start + size,
 			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL, PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,

@@ -39,9 +39,9 @@ inline bool is_page_special(pte_t *pte){
 
 	val = native_pte_val(*pte);
 
-	if (debug_temp1) {
+	// if (debug_temp1) {
 		printk("BoKASAN: is_page_special: pte: %px, present: %d, special: %d, refcount: %u\n", pte, (val & _PAGE_PRESENT) == _PAGE_PRESENT, (val & _PAGE_SPECIAL) == _PAGE_SPECIAL, get_page_refcount(pte));
-	}
+	// }
 
 	if ((val & _PAGE_SPECIAL) == _PAGE_SPECIAL) {
 		return true;
