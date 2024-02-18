@@ -9,6 +9,8 @@
 #include <linux/mempool.h>
 #include <linux/types.h>
 
+#include <stdbool.h>
+
 #include <asm/traps.h>
 #include <asm/tlbflush.h>
 #include <asm/pgtable_types.h>
@@ -30,7 +32,9 @@ MODULE_DESCRIPTION("BoKASAN");
 MODULE_AUTHOR("Mingi Cho");
 MODULE_LICENSE("GPL");
 
-unsigned long g_vaddr;
+#define PTE_TABLE_SIZE 64
+#define PTE_TABLE_MASK (PTE_TABLE_SIZE - 1)
+pte_t *g_pte[PTE_TABLE_SIZE];
 int major;
 
 static struct cdev bokasan_devs;
@@ -119,7 +123,7 @@ static asmlinkage void* fh_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t fla
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_special((unsigned long)object)){		// Design: cannot reuse previous page?
+			if(is_vaddr_special((unsigned long)object)){		// Design: cannot reuse previous page?
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -183,7 +187,7 @@ static asmlinkage void* fh_kmem_cache_alloc_trace(struct kmem_cache *cachep, gfp
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_special((unsigned long)object)){
+			if(is_vaddr_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -232,7 +236,7 @@ static asmlinkage void* fh__kmalloc(size_t size, gfp_t flags){
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_special((unsigned long)object)){
+			if(is_vaddr_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -274,7 +278,7 @@ static asmlinkage void* fh_kmem_cache_alloc_node(struct kmem_cache *cachep, gfp_
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_special((unsigned long)object)){
+			if(is_vaddr_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -330,7 +334,7 @@ static asmlinkage void* fh_kmem_cache_alloc_node_trace(struct kmem_cache *cachep
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_special((unsigned long)object)){
+			if(is_vaddr_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -379,7 +383,7 @@ static asmlinkage void* fh__kmalloc_node(size_t size, gfp_t flags, int nodeid){
 
 			if(i == MAX_ALLOC_TRIAL) break;
 
-			if(is_page_special((unsigned long)object)){
+			if(is_vaddr_special((unsigned long)object)){
 				bokasan_kmalloc(object, 0);
 			}
 			else{
@@ -415,7 +419,7 @@ static asmlinkage void* fh_kmalloc_order(size_t size, gfp_t flags, unsigned int 
 
 		if(ZERO_OR_NULL_PTR(object)) return object;
 
-		if(is_page_special((unsigned long)object)){
+		if(is_vaddr_special((unsigned long)object)){
 			clear_kasan_alloc_shadow((unsigned long)object);
 		}
 
@@ -447,7 +451,7 @@ static asmlinkage void* fh_kmalloc_large_node(size_t size, gfp_t flags, int node
 
 		if(ZERO_OR_NULL_PTR(object)) return object;
 
-		if(is_page_special((unsigned long)object)){
+		if(is_vaddr_special((unsigned long)object)){
 			clear_kasan_alloc_shadow((unsigned long)object);
 		}
 
@@ -587,7 +591,7 @@ static asmlinkage void fh_prep_compound_page(struct page *page, unsigned int ord
 
 // Debug handler
 static asmlinkage void fh_do_debug(struct pt_regs *regs, unsigned long error_code){
-	unsigned long vaddr = g_vaddr;
+	pte_t *pte = g_pte[(current->pid) & PTE_TABLE_MASK];
 	unsigned long dr6;
 
 	get_debugreg(dr6, 6);
@@ -604,7 +608,7 @@ static asmlinkage void fh_do_debug(struct pt_regs *regs, unsigned long error_cod
 		regs->flags &= ~X86_EFLAGS_TF;
 
 		// Mark page not present
-		clear_present_bit(vaddr);
+		page_unrefer(pte);
 	}
 	else{
 		real_do_debug(regs, error_code);
@@ -617,23 +621,41 @@ static asmlinkage long fh_do_page_fault(struct pt_regs *regs,
 {
 	long ret = 0;
 	unsigned long vaddr = address;
+	pte_t *pte;
+
+	if (address < KASAN_REGION_BASE) {
+		return real_do_page_fault(regs, error_code, address);
+	}
+
+	pte = get_addr_pte(vaddr);
+	if (!pte) {		// invalid PTE
+		return ret;
+	}
 
 	// Filter out irrelevant memory access
-	if(is_page_special(vaddr)){
-		// Mark page present
-		set_present_bit(vaddr);
+#if DEBUG
+	// printk("bokasan: page fault at %lx, pte %px, pid: %u\n", vaddr, pte, current->pid);
+#endif
 
+	if (is_page_special(pte)) {
+		// Add reference count to the page
+		page_refer(pte);
 		// Check address validity
 		if(is_shadow_page_exist(vaddr))
 			check_poison(vaddr, regs->ip);
-
-		g_vaddr = vaddr;
-
+		
+		g_pte[(current->pid) & PTE_TABLE_MASK] = pte;
+		
 		// Single-step
 		regs->flags |=  X86_EFLAGS_TF;
 
 		return ret;
 	}
+
+	// TODO: debug
+#if DEBUG
+	// printk("bokasan: page fault at %lx, pid: %u, not page_special\n", vaddr, current->pid);
+#endif
 
 	if(is_current_pid_present()){
 		int pid = task_pid_nr(current);
@@ -701,7 +723,7 @@ static asmlinkage long fh_do_mount(const char *dev_name, const char __user *dir_
 
 	delta = (finish.tv_sec - start.tv_sec) * 1000000000 + (finish.tv_nsec - start.tv_nsec);
 
-	printk("[do_mount] time: %ld\n", delta);
+	// printk("[do_mount] time: %ld\n", delta);
 
 	return result;
 }

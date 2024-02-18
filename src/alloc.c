@@ -34,15 +34,18 @@ int (* _change_page_attr_set_clr)(unsigned long *addr, int numpages, pgprot_t ma
 // #define kasan_mem_to_shadow(addr) ((void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET)
 inline void *kasan_mem_to_shadow(const void *addr){
 	void* shadow_addr;
-	pgd_t *pgd;
+	// pgd_t *pgd;
+
 	shadow_addr = (void*)(((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET);
-	if (current->mm != NULL && current->pid != 1) {
-		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_addr);
-		if (unlikely(pgd_none(*pgd))) {
-			printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; addr %px shadow_addr %px pgd %px pgd_none\n", current->pid, addr, shadow_addr, pgd);
-			dump_stack();
-		}
-	}
+
+	// Debug, if there was a crash of empty pgd paging error
+	// if (current->mm != NULL && current->pid != 1) {
+	// 	pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_addr);
+	// 	if (unlikely(pgd_none(*pgd))) {
+	// 		printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; addr %px shadow_addr %px pgd %px pgd_none\n", current->pid, addr, shadow_addr, pgd);
+	// 		// dump_stack();
+	// 	}
+	// }
 	return shadow_addr;
 }
 
@@ -53,7 +56,7 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 	struct task_struct *task;
 	
 #if DEBUG
-	printk("BoKASAN: vmalloc %lx - %lx; mm %px\n", start, start + size, current->mm);
+	printk("BoKASAN: vmalloc %lx - %lx; pid %u; mm %px\n", start, start + size, current->pid, current->mm);
 #endif
 	vaddr = __vmalloc_node_range_(size, 1, start, start + size,
 			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL, PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
@@ -61,13 +64,10 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 	pgd = (pgd_t *) pgd_offset(current->mm, start);
 	if (unlikely(pgd_none(*pgd))) {
 		pgd_ref = (pgd_t *) pgd_offset(_init_mm, start);
-		// set_pgd(pgd, *pgd_ref);
 
 		// sync the new allocated pgd info to all procs
 		for_each_process(task) {
-			// printk("bokasan: discover PID %d\n", task->pid);
 			if (task->mm != NULL) {
-				// printk("boksasn: sync PID %d\n", task->pid);
 				pgd = (pgd_t *) pgd_offset(task->mm, start);
 				set_pgd(pgd, *pgd_ref);
 			}
@@ -95,18 +95,18 @@ void init_kasan(void){
 	shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
 	printk("Shadow memory %px - %px\n", (void*)shadow_start, (void*)shadow_end);
 
-	vmalloc_sync(shadow_end - shadow_start, shadow_start);
+	g_shadow_memory = vmalloc_sync(shadow_end - shadow_start, shadow_start);
 	if (g_shadow_memory) {
 		printk("g_shadow_memory %px\n", g_shadow_memory);
 
 		bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
 		printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
-		vfree(g_shadow_memory);
+		// vfree(g_shadow_memory);
 	}
 
 	if (test_kobj) {
-		pages_clear_present_bit((unsigned long)test_kobj, size);
-		pages_set_present_bit((unsigned long)test_kobj, size);
+		make_4k_page(test_kobj);
+		object_init_flag((unsigned long)test_kobj, size);
 		kfree(test_kobj);
 	}
 #endif
@@ -336,7 +336,6 @@ bool check_poison(unsigned long vaddr, unsigned long ip){
 
 		if(!strncmp(fname, "clear_page_erms", strlen("clear_page_erms"))){
 			clear_kasan_alloc_shadow(vaddr);
-			set_present_bit(vaddr);
 
 			return true;
 		}
@@ -397,7 +396,11 @@ void bokasan_poison_shadow(const void *address, size_t size, u8 value)
 	shadow_end = kasan_mem_to_shadow(address + size);
 
 #if DEBUG
-	printk("Poison region %px - %px: %hhx\n", shadow_start, shadow_end, value);
+	if (debug_dump){
+		printk("Poison region %px - %px: %hhx\n", shadow_start, shadow_end, value);
+		// dump_stack();
+	}
+	debug_dump = false;
 #endif
 
 	memset(shadow_start, value, shadow_end - shadow_start);
@@ -555,8 +558,7 @@ bool bokasan_kmalloc(const void *object, size_t size){
 	// Make redzone
 	bokasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start, BOKASAN_REDZONE);
 
-	// Clear page present bit
-	pages_clear_present_bit((unsigned long)object, ksize_(object));
+	object_init_flag((unsigned long)object, ksize_(object));
 
 	return true;
 }
@@ -583,7 +585,7 @@ bool bokasan_kmalloc_large(const void *object, size_t size, gfp_t flags)
 	bokasan_unpoison_shadow(object, size, BOKASAN_OBJECT);
 	bokasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start, BOKASAN_PAGE_REDZONE);
 
-	pages_clear_present_bit((unsigned long)object, redzone_end - (unsigned long)object);
+	object_init_flag((unsigned long)object, redzone_end - (unsigned long)object);
 
 	return true;
 }
@@ -612,7 +614,7 @@ void bokasan_free_pages_(struct page *page, unsigned int order)
 
 		make_4k_page(page_address(page));
 
-		pages_clear_present_bit((unsigned long)page_address(page), PAGE_SIZE << order);
+		object_init_flag((unsigned long)page_address(page), PAGE_SIZE << order);
 	}
 }
 

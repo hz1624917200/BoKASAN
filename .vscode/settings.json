@@ -19,6 +19,7 @@
 		"mempool.h": "c",
 		"version.h": "c",
 		"alloc.h": "c",
-		"vmalloc.h": "c"
+		"vmalloc.h": "c",
+		"config.h": "c"
 	}
 }
