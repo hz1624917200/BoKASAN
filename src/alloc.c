@@ -36,13 +36,15 @@ inline void *kasan_mem_to_shadow(const void *addr){
 	void* shadow_addr;
 	pgd_t *pgd;
 	shadow_addr = (void*)(((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET);
-	if (current->mm != NULL && current->pid != 1) {
-		pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_addr);
-		if (unlikely(pgd_none(*pgd))) {
-			printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; addr %px shadow_addr %px pgd %px pgd_none\n", current->pid, addr, shadow_addr, pgd);
-			dump_stack();
-		}
-	}
+
+	// Debug, if there was a crash of empty pgd paging error
+	// if (current->mm != NULL && current->pid != 1) {
+	// 	pgd = (pgd_t *) pgd_offset(current->mm, (unsigned long)shadow_addr);
+	// 	if (unlikely(pgd_none(*pgd))) {
+	// 		printk("BoKASAN Warning: kasan_mem_to_shadow pid %d; addr %px shadow_addr %px pgd %px pgd_none\n", current->pid, addr, shadow_addr, pgd);
+	// 		// dump_stack();
+	// 	}
+	// }
 	return shadow_addr;
 }
 
@@ -61,13 +63,10 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 	pgd = (pgd_t *) pgd_offset(current->mm, start);
 	if (unlikely(pgd_none(*pgd))) {
 		pgd_ref = (pgd_t *) pgd_offset(_init_mm, start);
-		// set_pgd(pgd, *pgd_ref);
 
 		// sync the new allocated pgd info to all procs
 		for_each_process(task) {
-			// printk("bokasan: discover PID %d\n", task->pid);
 			if (task->mm != NULL) {
-				// printk("boksasn: sync PID %d\n", task->pid);
 				pgd = (pgd_t *) pgd_offset(task->mm, start);
 				set_pgd(pgd, *pgd_ref);
 			}
@@ -109,7 +108,6 @@ void init_kasan(void){
 		object_init_flag((unsigned long)test_kobj, size);
 		kfree(test_kobj);
 	}
-	printk("BoKASAN: end of init\n");
 #endif
 
 }
@@ -508,7 +506,6 @@ bool alloc_shadow(size_t size, unsigned long addr){
 
 #if DEBUG
 	printk("Allocating shadow memory %lx - %lx\n", addr, addr + size);
-	dump_stack();
 #endif
 
 	addr_first = addr & ~(PAGE_SIZE-1);

@@ -6,6 +6,7 @@ pte_t* get_addr_pte(unsigned long vaddr);
 // get the refcount of the page
 unsigned int get_page_refcount(pte_t *pte);
 bool is_page_special(pte_t *pte);
+bool is_vaddr_special(unsigned long vaddr);
 
 void page_refer(pte_t *pte);
 void page_unrefer(pte_t *pte);
