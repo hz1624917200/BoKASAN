@@ -95,20 +95,21 @@ void init_kasan(void){
 	shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
 	printk("Shadow memory %px - %px\n", (void*)shadow_start, (void*)shadow_end);
 
-	vmalloc_sync(shadow_end - shadow_start, shadow_start);
+	g_shadow_memory = vmalloc_sync(shadow_end - shadow_start, shadow_start);
 	if (g_shadow_memory) {
 		printk("g_shadow_memory %px\n", g_shadow_memory);
 
 		bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
 		printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
-		vfree(g_shadow_memory);
+		// vfree(g_shadow_memory);
 	}
 
 	if (test_kobj) {
-		pages_clear_present_bit((unsigned long)test_kobj, size);
-		pages_set_present_bit((unsigned long)test_kobj, size);
+		make_4k_page(test_kobj);
+		object_init_flag((unsigned long)test_kobj, size);
 		kfree(test_kobj);
 	}
+	printk("BoKASAN: end of init\n");
 #endif
 
 }
@@ -336,7 +337,6 @@ bool check_poison(unsigned long vaddr, unsigned long ip){
 
 		if(!strncmp(fname, "clear_page_erms", strlen("clear_page_erms"))){
 			clear_kasan_alloc_shadow(vaddr);
-			set_present_bit(vaddr);
 
 			return true;
 		}
@@ -397,7 +397,11 @@ void bokasan_poison_shadow(const void *address, size_t size, u8 value)
 	shadow_end = kasan_mem_to_shadow(address + size);
 
 #if DEBUG
-	printk("Poison region %px - %px: %hhx\n", shadow_start, shadow_end, value);
+	if (debug_dump){
+		printk("Poison region %px - %px: %hhx\n", shadow_start, shadow_end, value);
+		// dump_stack();
+	}
+	debug_dump = false;
 #endif
 
 	memset(shadow_start, value, shadow_end - shadow_start);
@@ -504,6 +508,7 @@ bool alloc_shadow(size_t size, unsigned long addr){
 
 #if DEBUG
 	printk("Allocating shadow memory %lx - %lx\n", addr, addr + size);
+	dump_stack();
 #endif
 
 	addr_first = addr & ~(PAGE_SIZE-1);
@@ -555,8 +560,7 @@ bool bokasan_kmalloc(const void *object, size_t size){
 	// Make redzone
 	bokasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start, BOKASAN_REDZONE);
 
-	// Clear page present bit
-	pages_clear_present_bit((unsigned long)object, ksize_(object));
+	object_init_flag((unsigned long)object, ksize_(object));
 
 	return true;
 }
@@ -583,7 +587,7 @@ bool bokasan_kmalloc_large(const void *object, size_t size, gfp_t flags)
 	bokasan_unpoison_shadow(object, size, BOKASAN_OBJECT);
 	bokasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start, BOKASAN_PAGE_REDZONE);
 
-	pages_clear_present_bit((unsigned long)object, redzone_end - (unsigned long)object);
+	object_init_flag((unsigned long)object, redzone_end - (unsigned long)object);
 
 	return true;
 }
@@ -612,7 +616,7 @@ void bokasan_free_pages_(struct page *page, unsigned int order)
 
 		make_4k_page(page_address(page));
 
-		pages_clear_present_bit((unsigned long)page_address(page), PAGE_SIZE << order);
+		object_init_flag((unsigned long)page_address(page), PAGE_SIZE << order);
 	}
 }
 

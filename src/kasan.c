@@ -9,6 +9,8 @@
 #include <linux/mempool.h>
 #include <linux/types.h>
 
+#include <stdbool.h>
+
 #include <asm/traps.h>
 #include <asm/tlbflush.h>
 #include <asm/pgtable_types.h>
@@ -30,7 +32,9 @@ MODULE_DESCRIPTION("BoKASAN");
 MODULE_AUTHOR("Mingi Cho");
 MODULE_LICENSE("GPL");
 
-unsigned long g_vaddr;
+#define PTE_TABLE_SIZE 64
+#define PTE_TABLE_MASK PTE_TABLE_SIZE - 1
+pte_t *g_pte[PTE_TABLE_SIZE];
 int major;
 
 static struct cdev bokasan_devs;
@@ -587,7 +591,7 @@ static asmlinkage void fh_prep_compound_page(struct page *page, unsigned int ord
 
 // Debug handler
 static asmlinkage void fh_do_debug(struct pt_regs *regs, unsigned long error_code){
-	unsigned long vaddr = g_vaddr;
+	pte_t *pte = g_pte[current->pid & PTE_TABLE_MASK];
 	unsigned long dr6;
 
 	get_debugreg(dr6, 6);
@@ -604,7 +608,7 @@ static asmlinkage void fh_do_debug(struct pt_regs *regs, unsigned long error_cod
 		regs->flags &= ~X86_EFLAGS_TF;
 
 		// Mark page not present
-		clear_present_bit(vaddr);
+		page_unrefer(pte);
 	}
 	else{
 		real_do_debug(regs, error_code);
@@ -617,23 +621,37 @@ static asmlinkage long fh_do_page_fault(struct pt_regs *regs,
 {
 	long ret = 0;
 	unsigned long vaddr = address;
+	pte_t *pte;
+
+	pte = get_addr_pte(vaddr);
+	if (!pte) {		// invalid PTE
+		return ret;
+	}
 
 	// Filter out irrelevant memory access
-	if(is_page_special(vaddr)){
-		// Mark page present
-		set_present_bit(vaddr);
+	printk("bokasan: page fault at %lx, pte %px, pid: %u\n", vaddr, pte, current->pid);
+	debug_temp1 = true;
 
+	if (is_page_special(pte)) {
+		// Add reference count to the page
+		page_refer(pte);
 		// Check address validity
 		if(is_shadow_page_exist(vaddr))
 			check_poison(vaddr, regs->ip);
-
-		g_vaddr = vaddr;
-
+		
+		g_pte[current->pid & PTE_TABLE_MASK] = pte;
+		
 		// Single-step
 		regs->flags |=  X86_EFLAGS_TF;
 
+		// TODO: debug
+		debug_temp1 = false;
 		return ret;
 	}
+
+	// TODO: debug
+	debug_temp1 = false;
+	printk("bokasan: page fault at %lx, pid: %u, not page_special\n", vaddr, current->pid);
 
 	if(is_current_pid_present()){
 		int pid = task_pid_nr(current);

@@ -1,8 +1,19 @@
-bool is_page_special(unsigned long vaddr);
-void set_present_bit(unsigned long vaddr);
-void clear_present_bit(unsigned long vaddr);
-void pages_clear_present_bit(unsigned long vaddr, size_t size);
-void pages_set_present_bit(unsigned long vaddr, size_t size);
-int test_present_bit(void);
+#ifndef _PAGE_H
+#define _PAGE_H
 
-extern void* g_slub_address;
+// get the page table entry, return NULL if not valid
+pte_t* get_addr_pte(unsigned long vaddr);
+// get the refcount of the page
+unsigned int get_page_refcount(pte_t *pte);
+bool is_page_special(pte_t *pte);
+
+void page_refer(pte_t *pte);
+void page_unrefer(pte_t *pte);
+void page_init_flag(pte_t *pte);
+void object_init_flag(unsigned long vaddr, size_t size);
+
+#define PTE_REFCOUNT_SHIFT 52
+#define PTE_REFCOUNT_MASK 0x00F0000000000000
+#define PTE_REFCOUNT_MAX 0xF
+
+#endif

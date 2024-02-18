@@ -1,4 +1,5 @@
 #include "hook.h"
+#include "config.h"
 
 static int fh_resolve_hook_address(struct ftrace_hook *hook)
 {
@@ -22,6 +23,10 @@ static void notrace fh_ftrace_thunk(unsigned long ip, unsigned long parent_ip,
 		struct ftrace_ops *ops, struct pt_regs *regs)
 {
 	struct ftrace_hook *hook = container_of(ops, struct ftrace_hook, ops);
+
+#if DEBUG
+	debug_dump = true;
+#endif
 
 #if USE_FENTRY_OFFSET
 	regs->ip = (unsigned long) hook->function;
