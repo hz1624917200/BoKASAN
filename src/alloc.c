@@ -34,7 +34,8 @@ int (* _change_page_attr_set_clr)(unsigned long *addr, int numpages, pgprot_t ma
 // #define kasan_mem_to_shadow(addr) ((void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET)
 inline void *kasan_mem_to_shadow(const void *addr){
 	void* shadow_addr;
-	pgd_t *pgd;
+	// pgd_t *pgd;
+
 	shadow_addr = (void*)(((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET);
 
 	// Debug, if there was a crash of empty pgd paging error
