@@ -639,6 +639,8 @@ static asmlinkage long fh_do_page_fault(struct pt_regs *regs,
 
 	if (is_page_special(pte)) {
 		// Add reference count to the page
+		printk("bokasan: page fault at %lx, pte %px, pid: %u\n", vaddr, pte, current->pid);
+		dump_stack();
 		page_refer(pte);
 		// Check address validity
 		if(is_shadow_page_exist(vaddr))
@@ -808,7 +810,15 @@ static int fh_init(void)
 	}
 	
 	pr_info("BoKASAN Loaded\n");
-	
+
+	// Test UAF crash
+	add_pid(current->pid);
+	char* buf = kmalloc(0x400, GFP_KERNEL);
+	printk("BoKASAN: kmalloc address: %px\n", buf);
+	strcpy(buf, "Hello, World!");
+	printk("BoKASAN: Memory content: %s\n", buf);
+	kfree(buf);
+	// printk("BoKASAN: UAF test: %s\n", buf);
 	return 0;
 }
 module_init(fh_init);

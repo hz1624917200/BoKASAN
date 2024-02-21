@@ -71,8 +71,9 @@ void page_refer(pte_t *pte)
 	unsigned long count = get_page_refcount(pte);
 
 #if DEBUG
-	if (count > 0)
-		printk("BoKASAN: page_refer: pte: %px, refcount: %lu\n", pte, count);
+	// if (count > 0)
+		// printk("BoKASAN: page_refer: pte: %px, refcount: %lu\n", pte, count);
+		// dump_stack();
 #endif
 
 	val &= ~PTE_REFCOUNT_MASK;	// clear refcount
@@ -95,8 +96,9 @@ void page_unrefer(pte_t *pte)
 	unsigned long count = get_page_refcount(pte);
 
 #if DEBUG
-	if (count > 1)
-		printk("BoKASAN: page_unrefer: pte: %px, refcount: %lu\n", pte, count);
+	// if (count > 1)
+		// printk("BoKASAN: page_unrefer: pte: %px, refcount: %lu\n", pte, count);
+		// dump_stack();
 #endif
 
 	val &= ~PTE_REFCOUNT_MASK;	// clear refcount

@@ -61,6 +61,9 @@ void* vmalloc_sync(unsigned long size, unsigned long start) {
 	vaddr = __vmalloc_node_range_(size, 1, start, start + size,
 			GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL, PAGE_KERNEL, VM_NO_GUARD, NUMA_NO_NODE,
 			__builtin_return_address(0));
+	if (current->mm == NULL) {	// current memory manager is none, can't sync
+		return vaddr;
+	}
 	pgd = (pgd_t *) pgd_offset(current->mm, start);
 	if (unlikely(pgd_none(*pgd))) {
 		pgd_ref = (pgd_t *) pgd_offset(_init_mm, start);
@@ -506,7 +509,8 @@ bool alloc_shadow(size_t size, unsigned long addr){
 	if(size == 0) return false;
 
 #if DEBUG
-	printk("Allocating shadow memory %lx - %lx\n", addr, addr + size);
+	printk("Allocating shadow memory for %lx - %lx, pid: %u\n", addr, addr + size, current->pid);
+	dump_stack();
 #endif
 
 	addr_first = addr & ~(PAGE_SIZE-1);
