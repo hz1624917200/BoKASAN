@@ -45,7 +45,7 @@ void report_poison_1(unsigned long vaddr, unsigned long ip){
 
 	ip = cookie.ip;
 
-	shadow_value = *(s8 *)kasan_mem_to_shadow((void *)vaddr);
+	shadow_value = *(s8 *)bokasan_mem_to_shadow((void *)vaddr);
 
 	pr_crit("==================================================================\n");
 

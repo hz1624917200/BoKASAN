@@ -6,7 +6,7 @@
 #include <linux/slab.h>
 #include <linux/slub_def.h>
 
-inline void *kasan_mem_to_shadow(const void *addr);
+inline void *bokasan_mem_to_shadow(const void *addr);
 
 void init_kasan(void);
 
@@ -45,13 +45,13 @@ void bokasan_kfree_poison(struct kmem_cache *cache, const void* addr, size_t siz
 
 #define KASAN_MAX_OBJECT_SIZE 0x2000
 
-// #define CONFIG_KASAN_SHADOW_OFFSET	0xdffffc0000000000
-// #define CONFIG_KASAN_SHADOW_OFFSET	0xDFFFEFF000000000 //0xdfffebe000000000
+// #define CONFIG_BOKASAN_SHADOW_OFFSET	0xdffffc0000000000
+// #define CONFIG_BOKASAN_SHADOW_OFFSET	0xDFFFEFF000000000 //0xdfffebe000000000
 // for 5-level paging, mapping memory at 0xff11000000000000 to 0xffb0000000000000
 #define KASAN_REGION_BASE			0xff11000000000000
-#define CONFIG_KASAN_SHADOW_OFFSET	0xdfcde00000000000
+#define CONFIG_BOKASAN_SHADOW_OFFSET	0xdfcde00000000000
 #define KASAN_SHADOW_SCALE_SHIFT	3
-#define KASAN_SHADOW_OFFSET 		_AC(CONFIG_KASAN_SHADOW_OFFSET, UL)
+#define BOKASAN_SHADOW_OFFSET 		_AC(CONFIG_BOKASAN_SHADOW_OFFSET, UL)
 
 #define KASAN_SHADOW_SCALE_SIZE (1UL << KASAN_SHADOW_SCALE_SHIFT)
 #define KASAN_SHADOW_MASK       (KASAN_SHADOW_SCALE_SIZE - 1)

@@ -31,12 +31,12 @@ void* (* __vmalloc_node_range_)(unsigned long size, unsigned long align,
 int (* _change_page_attr_set_clr)(unsigned long *addr, int numpages, pgprot_t mask_set, pgprot_t mask_clr,
 				    int force_split, int in_flag, struct page **pages);
 
-// #define kasan_mem_to_shadow(addr) ((void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET)
-inline void *kasan_mem_to_shadow(const void *addr){
+// #define bokasan_mem_to_shadow(addr) ((void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + BOKASAN_SHADOW_OFFSET)
+inline void *bokasan_mem_to_shadow(const void *addr){
 	void* shadow_addr;
 	// pgd_t *pgd;
 
-	shadow_addr = (void*)(((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + KASAN_SHADOW_OFFSET);
+	shadow_addr = (void*)(((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT) + BOKASAN_SHADOW_OFFSET);
 
 	// Debug, if there was a crash of empty pgd paging error
 	// if (current->mm != NULL && current->pid != 1) {
@@ -94,8 +94,8 @@ void init_kasan(void){
 #if INIT_TEST
 	test_kobj = kmalloc(size, GFP_KERNEL);
 	printk("test_kobj %px\n", test_kobj);
-	shadow_start = (unsigned long)kasan_mem_to_shadow((void*)test_kobj);
-	shadow_end = (unsigned long)kasan_mem_to_shadow((void*)test_kobj + size);
+	shadow_start = (unsigned long)bokasan_mem_to_shadow((void*)test_kobj);
+	shadow_end = (unsigned long)bokasan_mem_to_shadow((void*)test_kobj + size);
 	printk("Shadow memory %px - %px\n", (void*)shadow_start, (void*)shadow_end);
 
 	g_shadow_memory = vmalloc_sync(shadow_end - shadow_start, shadow_start);
@@ -103,7 +103,7 @@ void init_kasan(void){
 		printk("g_shadow_memory %px\n", g_shadow_memory);
 
 		bokasan_poison_shadow((void*)test_kobj, size, BOKASAN_PAGE);
-		printk("Memory content: %hhx\n", *(char*)kasan_mem_to_shadow((void*)test_kobj));
+		printk("Memory content: %hhx\n", *(char*)bokasan_mem_to_shadow((void*)test_kobj));
 		// vfree(g_shadow_memory);
 	}
 
@@ -238,7 +238,7 @@ void make_4k_page(void* object){
 
 bool is_shadow_page_exist(unsigned long vaddr){
 	unsigned int l;
-	pte_t *pte = lookup_address((unsigned long)kasan_mem_to_shadow((void *) vaddr), &l);
+	pte_t *pte = lookup_address((unsigned long)bokasan_mem_to_shadow((void *) vaddr), &l);
 	
 	if(pte != NULL){
 		if(l == PG_LEVEL_2M){
@@ -301,7 +301,7 @@ bool is_page_exist(unsigned long vaddr){
 
 static __always_inline bool memory_is_poisoned_1(unsigned long addr)
 {
-	s8* shadow_addr = (s8 *)kasan_mem_to_shadow((void *)addr);
+	s8* shadow_addr = (s8 *)bokasan_mem_to_shadow((void *)addr);
 	s8 shadow_value = *shadow_addr;
 
 	if (unlikely(shadow_value)) {
@@ -358,7 +358,7 @@ bool is_bokasan_allocated(unsigned long vaddr){
 
 	if(unlikely(ZERO_OR_NULL_PTR(vaddr))) return false;
 
-	shadow_addr = (s8 *)kasan_mem_to_shadow((void *)vaddr);
+	shadow_addr = (s8 *)bokasan_mem_to_shadow((void *)vaddr);
 	shadow_value = *shadow_addr;
 
 	if(BOKASAN_OBJECT == shadow_value)
@@ -368,7 +368,7 @@ bool is_bokasan_allocated(unsigned long vaddr){
 }
 
 bool is_bokasan_allocated_page(unsigned long vaddr){
-	s8* shadow_addr = (s8 *)kasan_mem_to_shadow((void *)vaddr);
+	s8* shadow_addr = (s8 *)bokasan_mem_to_shadow((void *)vaddr);
 	s8 shadow_value;
 
 	if(!is_page_exist((unsigned long)shadow_addr)) return false;
@@ -378,7 +378,7 @@ bool is_bokasan_allocated_page(unsigned long vaddr){
 	if(0 != shadow_value)
 		return true;
 
-	// shadow_addr = (s8 *)kasan_mem_to_shadow((void *)(vaddr & ~(PAGE_SIZE-1)));
+	// shadow_addr = (s8 *)bokasan_mem_to_shadow((void *)(vaddr & ~(PAGE_SIZE-1)));
 	// shadow_value = *shadow_addr;
 
 	// if(0 != shadow_value)
@@ -395,8 +395,8 @@ void bokasan_poison_shadow(const void *address, size_t size, u8 value)
 {
 	void *shadow_start, *shadow_end;
 
-	shadow_start = kasan_mem_to_shadow(address);
-	shadow_end = kasan_mem_to_shadow(address + size);
+	shadow_start = bokasan_mem_to_shadow(address);
+	shadow_end = bokasan_mem_to_shadow(address + size);
 
 #if DEBUG
 	if (debug_dump){
@@ -413,8 +413,8 @@ void bokasan_poison_shadow_irq(const void *address, size_t size, u8 value)
 {
 	void *shadow_start, *shadow_end;
 
-	shadow_start = kasan_mem_to_shadow(address);
-	shadow_end = kasan_mem_to_shadow(address + size);
+	shadow_start = bokasan_mem_to_shadow(address);
+	shadow_end = bokasan_mem_to_shadow(address + size);
 
 	memset(shadow_start, value, shadow_end - shadow_start);
 }
@@ -424,7 +424,7 @@ void bokasan_unpoison_shadow(const void *address, size_t size, u8 value)
 	bokasan_poison_shadow(address, size, value);
 
 	if (size & KASAN_SHADOW_MASK) {
-		u8 *shadow = (u8 *)kasan_mem_to_shadow(address + size);
+		u8 *shadow = (u8 *)bokasan_mem_to_shadow(address + size);
 
 		*shadow = size & KASAN_SHADOW_MASK;
 	}
@@ -435,7 +435,7 @@ void bokasan_unpoison_shadow_irq(const void *address, size_t size, u8 value)
 	bokasan_poison_shadow_irq(address, size, value);
 
 	if (size & KASAN_SHADOW_MASK) {
-		u8 *shadow = (u8 *)kasan_mem_to_shadow(address + size);
+		u8 *shadow = (u8 *)bokasan_mem_to_shadow(address + size);
 
 		*shadow = size & KASAN_SHADOW_MASK;
 	}
@@ -510,16 +510,29 @@ bool alloc_shadow(size_t size, unsigned long addr){
 
 #if DEBUG
 	printk("Allocating shadow memory for %lx - %lx, pid: %u\n", addr, addr + size, current->pid);
-	dump_stack();
+	if (irq_count() || !is_current_pid_present()) {
+		if (irq_count()) {
+			printk("BoKASAN: !!!!!!!!!!IRQ COUNT IN alloc_shadow!!!!!!!!!!!!\n");
+		}
+		printk("BoKASAN: !!!!!!!!!!PID %u NOT PRESENT IN alloc_shadow!!!!!!!!!!!!\n", current->pid);
+		if (is_vaddr_special(addr)) {
+			printk("BoKASAN: SPECIAL ADDR %lx IN alloc_shadow\n", addr);
+		}
+		dump_stack();
+	}
 #endif
 
 	addr_first = addr & ~(PAGE_SIZE-1);
 	addr_last = PAGE_ALIGN(addr + size) - 1;
 
 	for(; addr_first < addr_last; addr_first += PAGE_SIZE){
-		shadow_addr = (unsigned long)kasan_mem_to_shadow((void *)addr_first);
+		shadow_addr = (unsigned long)bokasan_mem_to_shadow((void *)addr_first);
 
 		if(!is_page_exist(shadow_addr)){
+			if (irq_count()) {
+				printk("BoKASAN: vmalloc during interrupt\n");
+				return false;
+			}
 			if(alloc_shadow_page_1m(shadow_addr) == false && alloc_shadow_page(shadow_addr) == false){
 				pr_err("alloc_shadow failed... addr %px shadow_addr %px size %lx\n", (void *)addr, (void*)shadow_addr, size);
 

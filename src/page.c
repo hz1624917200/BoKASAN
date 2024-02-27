@@ -19,7 +19,7 @@ pte_t* get_addr_pte(unsigned long vaddr){
 	if(l == PG_LEVEL_4K){
 		if (unlikely(pte_none(*pte))) {
 			printk("BoKASAN warning: pte_none @ %lu, pid %u\n", vaddr, current->pid);
-			dump_stack();
+			// dump_stack();
 		} else {
 			return pte;
 		}
@@ -37,12 +37,13 @@ inline bool is_page_special(pte_t *pte){
 
 	val = native_pte_val(*pte);
 
-	// if ((val & _PAGE_SPECIAL) == _PAGE_SPECIAL) {
-	// 	printk("BoKASAN: is_page_special: pte: %px, present: %d, special: %d, refcount: %u\n", pte, (val & _PAGE_PRESENT) == _PAGE_PRESENT, (val & _PAGE_SPECIAL) == _PAGE_SPECIAL, get_page_refcount(pte));
+	// if ((val & PTE_BOKASAN_MANAGED) == PTE_BOKASAN_MANAGED) {
+	// 	printk("BoKASAN: is_page_special: pte: %px, present: %d, special: %d, refcount: %u\n", pte, (val & _PAGE_PRESENT) == _PAGE_PRESENT, (val & PTE_BOKASAN_MANAGED) == PTE_BOKASAN_MANAGED, get_page_refcount(pte));
 	// }
 
-	if ((val & _PAGE_SPECIAL) == _PAGE_SPECIAL) {
-		return true;
+	if (BOKASAN_MANAGED_PAGE(val)) {
+		if (!(val & _PAGE_PRESENT)) return true;
+		if (get_page_refcount(pte) > 0) return true;
 	}
 	return false;
 }
@@ -121,7 +122,7 @@ void page_init_flag(pte_t *pte){
 
 	val &= ~PTE_REFCOUNT_MASK;	// clear refcount
 	val &= ~_PAGE_PRESENT;
-	val |= _PAGE_SPECIAL;
+	SET_BOKASAN_MANAGED_PAGE(val);
 	set_pte(pte, __pte(val));
 }
 
