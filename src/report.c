@@ -47,24 +47,22 @@ void report_poison_1(unsigned long vaddr, unsigned long ip){
 
 	shadow_value = *(s8 *)bokasan_mem_to_shadow((void *)vaddr);
 
-	pr_crit("==================================================================\n");
+	printk("==================================================================\n");
 
 	if((unsigned long)(shadow_value & 0xff) == BOKASAN_FREE){
-		pr_err("BUG: KASAN: use-after-free in %pS vaddr: %px\n", (void *)ip, (void *)vaddr);
+		pr_crit("BUG: BoKASAN: use-after-free in %pS vaddr: %px\n", (void *)ip, (void *)vaddr);
 	}
 	else if((unsigned long)(shadow_value & 0xff) == BOKASAN_REDZONE){
-		pr_crit("BUG: KASAN: out-of-bounds access in %pS vaddr: %px\n", (void *)ip, (void *)vaddr);
+		pr_crit("BUG: BoKASAN: out-of-bounds access in %pS vaddr: %px\n", (void *)ip, (void *)vaddr);
 	}
 	else if((unsigned long)(shadow_value & 0xff) == BOKASAN_FREE_PAGE){
-		pr_err("BUG: KASAN: use-after-free (page) in %pS vaddr: %px\n", (void *)ip, (void *)vaddr);
+		pr_crit("BUG: BoKASAN: use-after-free (page) in %pS vaddr: %px\n", (void *)ip, (void *)vaddr);
 	}
 	else {
-		pr_crit("BUG: KASAN: out-of-bounds access in %pS vaddr: %px\n", (void *)ip, (void *)vaddr);
+		pr_crit("BUG: BoKASAN: out-of-bounds access in %pS vaddr: %px\n", (void *)ip, (void *)vaddr);
 	}
 
 	dump_stack();
-
-	panic("bokasan panic...\n");
 }
 
 void init_report(void){
