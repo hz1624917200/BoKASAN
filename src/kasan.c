@@ -140,6 +140,7 @@ static asmlinkage void* fh_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t fla
 		snprintf(fname, 100, "%pS", __builtin_return_address(0));
 
 		if(strstr(fname, "skb_clone") != NULL){
+			printk("BoKASAN: in skb_clone\n");
 			object = real_kmem_cache_alloc(cachep, flags);
 
 			return object;
@@ -584,7 +585,8 @@ static asmlinkage void fh_kmem_cache_free(struct kmem_cache *cachep, void *objp)
 }
 
 static asmlinkage void fh_prep_compound_page(struct page *page, unsigned int order){
-	bokasan_alloc_pages_(page, order);
+	if (!(irq_count() || !is_current_pid_present()))
+		bokasan_alloc_pages_(page, order);
 
 	real_prep_compound_page(page, order);
 }
@@ -640,7 +642,7 @@ static asmlinkage long fh_do_page_fault(struct pt_regs *regs,
 	if (is_page_special(pte)) {
 		// Add reference count to the page
 		printk("bokasan: page fault at %lx, pte %px, pid: %u\n", vaddr, pte, current->pid);
-		dump_stack();
+		// dump_stack();
 		page_refer(pte);
 		// Check address validity
 		if(is_shadow_page_exist(vaddr))
@@ -812,12 +814,12 @@ static int fh_init(void)
 	pr_info("BoKASAN Loaded\n");
 
 	// Test UAF crash
-	add_pid(current->pid);
-	char* buf = kmalloc(0x400, GFP_KERNEL);
-	printk("BoKASAN: kmalloc address: %px\n", buf);
-	strcpy(buf, "Hello, World!");
-	printk("BoKASAN: Memory content: %s\n", buf);
-	kfree(buf);
+	// add_pid(current->pid);
+	// char* buf = kmalloc(0x400, GFP_KERNEL);
+	// printk("BoKASAN: kmalloc address: %px\n", buf);
+	// strcpy(buf, "Hello, World!");
+	// printk("BoKASAN: Memory content: %s\n", buf);
+	// kfree(buf);
 	// printk("BoKASAN: UAF test: %s\n", buf);
 	return 0;
 }

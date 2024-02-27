@@ -16,5 +16,9 @@ void object_init_flag(unsigned long vaddr, size_t size);
 #define PTE_REFCOUNT_SHIFT 52
 #define PTE_REFCOUNT_MASK 0x00F0000000000000
 #define PTE_REFCOUNT_MAX 0xF
+#define BOKASAN_MANAGED_PAGE(val) (val & _PAGE_SPECIAL)
+#define SET_BOKASAN_MANAGED_PAGE(val) val |= _PAGE_SPECIAL
+// #define BOKASAN_MANAGED_PAGE(val) ((val & _PAGE_SPECIAL) && (val & _PAGE_BIT_SOFTW2))
+// #define SET_BOKASAN_MANAGED_PAGE(val) (val = (val | _PAGE_SPECIAL | _PAGE_BIT_SOFTW2))
 
 #endif
