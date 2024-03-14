@@ -105,7 +105,7 @@ static void bokasan_setup_cdev(int minor, struct file_operations *fops){
 		unregister_chrdev_region(devno, MINOR_NUM);
 	}
 
-	device_create(bokasan_class, NULL, MKDEV(major, 0), NULL, "kasan%d", 0);
+	device_create(bokasan_class, NULL, MKDEV(major, 0), NULL, "bokasan%d", 0);
 }
 
 // Allocation functions
