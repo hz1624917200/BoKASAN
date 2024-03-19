@@ -641,7 +641,7 @@ static asmlinkage long fh_do_page_fault(struct pt_regs *regs,
 
 	if (is_page_special(pte)) {
 		// Add reference count to the page
-		printk("bokasan: page fault at %lx, pte %px, pid: %u\n", vaddr, pte, current->pid);
+		// printk("bokasan: page fault at %lx, pte %px, pid: %u\n", vaddr, pte, current->pid);
 		// dump_stack();
 		page_refer(pte);
 		// Check address validity

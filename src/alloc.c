@@ -513,13 +513,14 @@ bool alloc_shadow(size_t size, unsigned long addr){
 	if (irq_count() || !is_current_pid_present()) {
 		if (irq_count()) {
 			printk("BoKASAN: !!!!!!!!!!IRQ COUNT IN alloc_shadow!!!!!!!!!!!!\n");
+			dump_stack();
 		}
 		if (is_vaddr_special(addr)) {
 			printk("BoKASAN: SPECIAL ADDR %lx IN alloc_shadow\n", addr);
 		} else {
 			printk("BoKASAN: !!!!!!!!!!PID %u NOT PRESENT IN alloc_shadow!!!!!!!!!!!!\n", current->pid);
+			dump_stack();
 		}
-		dump_stack();
 	}
 #endif
 
