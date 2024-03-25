@@ -221,10 +221,19 @@ void make_4k_page(void* object){
 	int l, pid = task_pid_nr(current);
 	unsigned long addr;
 
+
 	lookup_address((unsigned long)object, &l);
 
 	if(l == PG_LEVEL_2M || l == PG_LEVEL_1G){
 		addr = (unsigned long) object & PAGE_MASK;
+
+		if (irqs_disabled()) {
+			printk("WARNING: Bokasan: make_4k_page when irq disabled, irq count: %ld\n", irq_count());
+			dump_stack();
+			return;
+		}
+
+		printk("Bokasan: change_page_attr_set_clr: %px\n", (void*)addr);
 
 		if(is_current_pid_present()){
 			remove_pid(pid);
@@ -323,7 +332,7 @@ void clear_kasan_alloc_shadow(unsigned long vaddr){
 	start = vaddr;
 
 	if(is_bokasan_allocated_page(start)){
-		if(!irq_count())
+		if(!(irqs_disabled() || irq_count()))
 			bokasan_unpoison_shadow((void *)start, size, BOKASAN_PAGE);
 		else
 			bokasan_unpoison_shadow_irq((void *)start, size, BOKASAN_PAGE);
@@ -465,7 +474,7 @@ bool alloc_shadow_page_1m(unsigned long shadow_start){
 bool alloc_shadow_page(unsigned long shadow_start){
 	int pid = -1;
 
-	if(irq_count()) {
+	if(irqs_disabled() || irq_count()) {
 		return false;
 	}
 
@@ -510,18 +519,18 @@ bool alloc_shadow(size_t size, unsigned long addr){
 
 #if DEBUG
 	printk("Allocating shadow memory for %lx - %lx, pid: %u\n", addr, addr + size, current->pid);
-	if (irq_count() || !is_current_pid_present()) {
-		if (irq_count()) {
-			printk("BoKASAN: !!!!!!!!!!IRQ COUNT IN alloc_shadow!!!!!!!!!!!!\n");
-			dump_stack();
-		}
-		if (is_vaddr_special(addr)) {
-			printk("BoKASAN: SPECIAL ADDR %lx IN alloc_shadow\n", addr);
-		} else {
-			printk("BoKASAN: !!!!!!!!!!PID %u NOT PRESENT IN alloc_shadow!!!!!!!!!!!!\n", current->pid);
-			dump_stack();
-		}
-	}
+	// if (irq_count() || !is_current_pid_present()) {
+	// 	if (irq_count()) {
+	// 		printk("BoKASAN: !!!!!!!!!!IRQ COUNT IN alloc_shadow!!!!!!!!!!!!\n");
+	// 		dump_stack();
+	// 	}
+	// 	if (is_vaddr_special(addr)) {
+	// 		printk("BoKASAN: SPECIAL ADDR %lx IN alloc_shadow\n", addr);
+	// 	} else {
+	// 		printk("BoKASAN: !!!!!!!!!!PID %u NOT PRESENT IN alloc_shadow!!!!!!!!!!!!\n", current->pid);
+	// 		dump_stack();
+	// 	}
+	// }
 #endif
 
 	addr_first = addr & ~(PAGE_SIZE-1);
@@ -531,8 +540,9 @@ bool alloc_shadow(size_t size, unsigned long addr){
 		shadow_addr = (unsigned long)bokasan_mem_to_shadow((void *)addr_first);
 
 		if(!is_page_exist(shadow_addr)){
-			if (irq_count()) {
+			if (irqs_disabled() || irq_count()) {
 				printk("BoKASAN: vmalloc during interrupt\n");
+				dump_stack();
 				return false;
 			}
 			if(alloc_shadow_page_1m(shadow_addr) == false && alloc_shadow_page(shadow_addr) == false){

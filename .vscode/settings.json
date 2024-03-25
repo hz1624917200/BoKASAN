@@ -20,6 +20,8 @@
 		"version.h": "c",
 		"alloc.h": "c",
 		"vmalloc.h": "c",
-		"config.h": "c"
+		"config.h": "c",
+		"mm.h": "c",
+		"preempt.h": "c"
 	}
 }

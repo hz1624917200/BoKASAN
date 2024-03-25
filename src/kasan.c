@@ -115,7 +115,7 @@ static asmlinkage void* fh_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t fla
 	size_t size = 0;
 
 	// Selective sanitization
-	if(!is_current_pid_present() || irq_count()){		// Is not registered to BoKASAN
+	if(!is_current_pid_present() || irqs_disabled() || irq_count()){		// Is not registered to BoKASAN
 		for(i = 0; i <= MAX_ALLOC_TRIAL; i++){
 			object = real_kmem_cache_alloc(cachep, flags);
 
@@ -180,7 +180,7 @@ static asmlinkage void* fh_kmem_cache_alloc_trace(struct kmem_cache *cachep, gfp
 	void* object = NULL;
 	int i = 0;
 
-	if(!is_current_pid_present() || irq_count() || size > KMALLOC_MAX_CACHE_SIZE){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count() || size > KMALLOC_MAX_CACHE_SIZE){
 		for(i = 0; i <= MAX_ALLOC_TRIAL; i++){
 			object = real_kmem_cache_alloc_trace(cachep, flags, size);
 
@@ -229,7 +229,7 @@ static asmlinkage void* fh__kmalloc(size_t size, gfp_t flags){
 	void* object = NULL;
 	int i = 0;
 
-	if(!is_current_pid_present() || irq_count() || size > KMALLOC_MAX_CACHE_SIZE){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count() || size > KMALLOC_MAX_CACHE_SIZE){
 		for(i = 0; i <= MAX_ALLOC_TRIAL; i++){
 			object = real__kmalloc(size, flags);
 
@@ -271,7 +271,7 @@ static asmlinkage void* fh_kmem_cache_alloc_node(struct kmem_cache *cachep, gfp_
 	int i = 0;
 	size_t size = 0;
 
-	if(!is_current_pid_present() || irq_count() || size > KASAN_MAX_OBJECT_SIZE){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count() || size > KASAN_MAX_OBJECT_SIZE){
 		for(i = 0; i <= MAX_ALLOC_TRIAL; i++){
 			object = real_kmem_cache_alloc_node(cachep, flags, nodeid);
 
@@ -327,7 +327,7 @@ static asmlinkage void* fh_kmem_cache_alloc_node_trace(struct kmem_cache *cachep
 	void* object = NULL;
 	int i = 0;
 
-	if(!is_current_pid_present() || irq_count() || size > KASAN_MAX_OBJECT_SIZE){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count() || size > KASAN_MAX_OBJECT_SIZE){
 		for(i = 0; i <= MAX_ALLOC_TRIAL; i++){
 			object = real_kmem_cache_alloc_node_trace(cachep, flags, nodeid, size);
 
@@ -376,7 +376,7 @@ static asmlinkage void* fh__kmalloc_node(size_t size, gfp_t flags, int nodeid){
 	void* object = NULL;
 	int i = 0;
 
-	if(!is_current_pid_present() || irq_count() || size > KASAN_MAX_OBJECT_SIZE){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count() || size > KASAN_MAX_OBJECT_SIZE){
 		for(i = 0; i <= MAX_ALLOC_TRIAL; i++){
 			object = real__kmalloc_node(size, flags, nodeid);
 
@@ -415,7 +415,7 @@ static asmlinkage void* fh__kmalloc_node(size_t size, gfp_t flags, int nodeid){
 static asmlinkage void* fh_kmalloc_order(size_t size, gfp_t flags, unsigned int order){
 	void* object = NULL;
 
-	if(!is_current_pid_present() || irq_count()){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count()){
 		object = real_kmalloc_order(size, flags, order);
 
 		if(ZERO_OR_NULL_PTR(object)) return object;
@@ -447,7 +447,7 @@ static asmlinkage void* fh_kmalloc_order(size_t size, gfp_t flags, unsigned int 
 static asmlinkage void* fh_kmalloc_large_node(size_t size, gfp_t flags, int node){
 	void* object = NULL;
 
-	if(!is_current_pid_present() || irq_count()){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count()){
 		object = real_kmalloc_large_node(size, flags, node);
 
 		if(ZERO_OR_NULL_PTR(object)) return object;
@@ -479,7 +479,7 @@ static asmlinkage void* fh_kmalloc_large_node(size_t size, gfp_t flags, int node
 static asmlinkage void* fh___kmalloc_track_caller(size_t size, gfp_t gfpflags, unsigned long caller){
 	void* object = NULL;
 
-	if(!is_current_pid_present() || irq_count() || size > KMALLOC_MAX_CACHE_SIZE){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count() || size > KMALLOC_MAX_CACHE_SIZE){
 		object = real___kmalloc_track_caller(size, gfpflags, caller);
 
 		return object;
@@ -505,7 +505,7 @@ static asmlinkage void* fh___kmalloc_track_caller(size_t size, gfp_t gfpflags, u
 static asmlinkage void* fh___kmalloc_node_track_caller(size_t size, gfp_t gfpflags, int node, unsigned long caller){
 	void* object = NULL;
 
-	if(!is_current_pid_present() || irq_count() || size > KMALLOC_MAX_CACHE_SIZE){
+	if(!is_current_pid_present() || irqs_disabled() || irq_count() || size > KMALLOC_MAX_CACHE_SIZE){
 		object = real___kmalloc_node_track_caller(size, gfpflags, node, caller);
 
 		return object;
@@ -585,7 +585,7 @@ static asmlinkage void fh_kmem_cache_free(struct kmem_cache *cachep, void *objp)
 }
 
 static asmlinkage void fh_prep_compound_page(struct page *page, unsigned int order){
-	if (!(irq_count() || !is_current_pid_present()))
+	if (!(irqs_disabled() || irq_count() || !is_current_pid_present()))
 		bokasan_alloc_pages_(page, order);
 
 	real_prep_compound_page(page, order);
@@ -678,10 +678,11 @@ static asmlinkage long fh_do_page_fault(struct pt_regs *regs,
 static asmlinkage long fh__do_fork(unsigned long clone_flags, unsigned long stack_start,
 	unsigned long stack_size, int __user *parent_tidptr, int __user *child_tidptr, unsigned long tls)
 {
-	int pid = task_pid_nr(current);
+	int pid = -1;
 	long result;
 
 	if(is_current_pid_present()){
+		pid = task_pid_nr(current);
 		remove_pid(pid);
 		result = real__do_fork(clone_flags, stack_start, stack_size, parent_tidptr, child_tidptr, tls);
 		add_pid(pid);
